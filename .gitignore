@@ -12,6 +12,9 @@ src/__pycache__/
 diagnosis*.log
 diagnosis*.py
 
+# 营销文案（私有）
+marketing/
+
 # IDE
 .vscode/
 .idea/

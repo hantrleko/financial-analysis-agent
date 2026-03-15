@@ -1,9 +1,22 @@
 import os
 import json
+import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from dotenv import load_dotenv
 
+from src.config import (
+    MAX_SCRAPE_CHARS,
+    MAX_SCRAPE_ARTICLES,
+    SCRAPE_TIMEOUT,
+    SCRAPE_WORKERS,
+    RSS_FEEDS,
+    SOURCE_DOMAINS,
+)
+
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 YOU_API_KEY = os.getenv("YOU_API_KEY")
 
@@ -15,22 +28,11 @@ class NewsCollector:
         "CNBC", "Financial Times", "Wall Street Journal"
     ]
 
-    # 新闻源到域名的映射
-    _SOURCE_DOMAINS = {
-        "Bloomberg": "bloomberg.com",
-        "Reuters": "reuters.com",
-        "AP News": "apnews.com",
-        "Yahoo Finance": "finance.yahoo.com",
-        "CNBC": "cnbc.com",
-        "Financial Times": "ft.com",
-        "Wall Street Journal": "wsj.com",
-    }
-
-    # 时间范围关键词映射
-    _TIME_RANGE_KEYWORDS = {
-        "24h": "past 24 hours",
-        "week": "past week",
-        "month": "past month",
+    # time_range → Freshness 映射
+    _FRESHNESS_MAP = {
+        "24h": "DAY",
+        "week": "WEEK",
+        "month": "MONTH",
     }
 
     def __init__(self):
@@ -42,34 +44,50 @@ class NewsCollector:
         支持通过 sources 指定新闻来源，通过 time_range 限定时间范围。
         """
         if not self.api_key:
-            print("Warning: YOU_API_KEY not found. Falling back to RSS.")
+            logger.warning("YOU_API_KEY not found. Falling back to RSS.")
             return self._fetch_rss(count)
 
         try:
             from youdotcom import You
+            from youdotcom.models import Freshness
 
             # 构建带 site: 限定的查询
             final_query = query
             if sources:
                 site_parts = []
                 for src in sources:
-                    domain = self._SOURCE_DOMAINS.get(src)
+                    domain = SOURCE_DOMAINS.get(src)
                     if domain:
                         site_parts.append(f"site:{domain}")
                 if site_parts:
                     final_query = f"{query} {' OR '.join(site_parts)}"
 
-            # 追加时间范围关键词
-            time_keyword = self._TIME_RANGE_KEYWORDS.get(time_range)
-            if time_keyword:
-                final_query = f"{final_query} {time_keyword}"
+            # 通过 Freshness 枚举设定时间范围
+            freshness_key = self._FRESHNESS_MAP.get(time_range)
+            freshness_value = getattr(Freshness, freshness_key, None) if freshness_key else None
 
-            print(f"Fetching news via You.com SDK for: '{final_query}'...")
+            logger.info("Fetching news via You.com SDK for: '%s' (freshness=%s)...", final_query, freshness_key)
             with You(self.api_key) as you:
-                res = you.search.unified(query=final_query)
+                res = you.search.unified(query=final_query, freshness=freshness_value)
 
             news_items = []
-            if res.results and res.results.web:
+
+            # 优先使用 news 结果
+            if res.results and res.results.news:
+                for item in res.results.news[:count]:
+                    news_items.append({
+                        "title": item.title,
+                        "url": item.url,
+                        "description": item.description or item.title,
+                        "source": "You.com (News)",
+                        "published_age": str(item.page_age) if item.page_age else "Recent",
+                        "thumbnail_url": item.thumbnail_url or "",
+                        "full_content": item.contents or "",
+                        "fetched_at": datetime.now().isoformat(),
+                    })
+
+            # 回退到 web 结果
+            if not news_items and res.results and res.results.web:
                 for item in res.results.web[:count]:
                     snippet = ""
                     if item.snippets:
@@ -81,34 +99,25 @@ class NewsCollector:
                         "description": snippet or item.title,
                         "source": "You.com",
                         "published_age": "Recent",
-                        "fetched_at": datetime.now().isoformat()
+                        "fetched_at": datetime.now().isoformat(),
                     })
 
-            print(f"Successfully fetched {len(news_items)} articles via You.com.")
+            logger.info("Successfully fetched %d articles via You.com.", len(news_items))
             return news_items if news_items else self._fetch_rss(count)
 
         except Exception as e:
-            print(f"Error fetching from You.com: {e}")
-            print("Falling back to RSS feeds...")
+            logger.error("Error fetching from You.com: %s", e)
+            logger.warning("Falling back to RSS feeds...")
             return self._fetch_rss(count)
-
-    # 多源 RSS 列表
-    _RSS_FEEDS = [
-        {"url": "https://finance.yahoo.com/news/rssindex", "source": "Yahoo Finance"},
-        {"url": "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US:en", "source": "Google News (Business)"},
-        {"url": "https://www.cnbc.com/id/100003114/device/rss/rss.html", "source": "CNBC"},
-        {"url": "https://feeds.reuters.com/reuters/businessNews", "source": "Reuters"},
-        {"url": "https://feeds.bloomberg.com/markets/news.rss", "source": "Bloomberg"},
-    ]
 
     def _fetch_rss(self, count=10):
         """从多个 RSS 源聚合新闻，按时间排序后取 top N。"""
         import feedparser
 
         all_items = []
-        for feed_info in self._RSS_FEEDS:
+        for feed_info in RSS_FEEDS:
             try:
-                print(f"Fetching RSS from: {feed_info['source']}...")
+                logger.info("Fetching RSS from: %s...", feed_info["source"])
                 feed = feedparser.parse(feed_info["url"])
                 for entry in feed.entries[:count]:
                     all_items.append({
@@ -119,12 +128,12 @@ class NewsCollector:
                         "published_age": entry.get("published", "Unknown"),
                         "fetched_at": datetime.now().isoformat(),
                     })
-                print(f"  ✓ {feed_info['source']}: {min(len(feed.entries), count)} articles")
+                logger.info("  %s: %d articles", feed_info["source"], min(len(feed.entries), count))
             except Exception as e:
-                print(f"  ✗ {feed_info['source']}: {e}")
+                logger.warning("  %s failed: %s", feed_info["source"], e)
 
         if not all_items:
-            print("All RSS feeds failed. Using mock data.")
+            logger.warning("All RSS feeds failed. Using mock data.")
             return self._get_mock_data()
 
         # 去重（按 title）
@@ -137,12 +146,12 @@ class NewsCollector:
                 unique_items.append(item)
 
         result = unique_items[:count]
-        print(f"Successfully fetched {len(result)} unique articles from {len(self._RSS_FEEDS)} RSS sources.")
+        logger.info("Successfully fetched %d unique articles from %d RSS sources.", len(result), len(RSS_FEEDS))
         return result
 
     def _get_mock_data(self):
         """兜底 mock 数据，用于测试流程。"""
-        print("Returning MOCK data.")
+        logger.info("Returning MOCK data.")
         return [
             {
                 "title": "Mock: Tech Stocks Rally on AI Optimism",
@@ -162,7 +171,7 @@ class NewsCollector:
             }
         ]
 
-    def scrape_content(self, url, timeout=10):
+    def scrape_content(self, url, timeout=SCRAPE_TIMEOUT):
         """使用 trafilatura 提取文章正文，失败则回退到 BeautifulSoup。"""
         # trafilatura 提取
         try:
@@ -176,7 +185,7 @@ class NewsCollector:
                     favor_precision=True,
                 )
                 if text and len(text) > 100:
-                    return text[:4000]
+                    return text[:MAX_SCRAPE_CHARS]
         except Exception:
             pass
 
@@ -198,27 +207,40 @@ class NewsCollector:
                 paragraphs = article.find_all("p")
                 text = "\n".join(p.get_text(strip=True) for p in paragraphs if len(p.get_text(strip=True)) > 30)
                 if text:
-                    return text[:4000]
+                    return text[:MAX_SCRAPE_CHARS]
         except Exception:
             pass
 
         return ""
 
-    def enrich_with_content(self, news_items, max_scrape=10):
-        """为新闻列表批量抓取正文内容，添加 full_content 字段。"""
-        total = min(len(news_items), max_scrape)
-        print(f"\nScraping full article content ({total} articles)...")
-        for i, item in enumerate(news_items[:max_scrape]):
-            url = item.get("url", "")
-            if url and url.startswith("http"):
-                content = self.scrape_content(url)
+    def enrich_with_content(self, news_items, max_scrape=MAX_SCRAPE_ARTICLES):
+        """为新闻列表并行抓取正文内容，添加 full_content 字段。"""
+        to_scrape = [
+            (i, item) for i, item in enumerate(news_items[:max_scrape])
+            if item.get("url", "").startswith("http") and not item.get("full_content")
+        ]
+        total = len(to_scrape)
+        logger.info("Scraping full article content (%d articles, %d workers)...", total, SCRAPE_WORKERS)
+
+        def _scrape_one(idx_item):
+            idx, item = idx_item
+            content = self.scrape_content(item["url"])
+            return idx, item, content
+
+        with ThreadPoolExecutor(max_workers=SCRAPE_WORKERS) as executor:
+            futures = {executor.submit(_scrape_one, pair): pair for pair in to_scrape}
+            for future in as_completed(futures):
+                idx, item, content = future.result()
                 item["full_content"] = content
                 if content:
-                    print(f"  ✓ [{i+1}/{total}] {len(content)} chars — {item.get('title', '')[:60]}")
+                    logger.info("  [%d/%d] %d chars - %s", idx + 1, total, len(content), item.get("title", "")[:60])
                 else:
-                    print(f"  ✗ [{i+1}/{total}] no content — {item.get('title', '')[:60]}")
-            else:
-                item["full_content"] = ""
+                    logger.warning("  [%d/%d] no content - %s", idx + 1, total, item.get("title", "")[:60])
+
+        # 确保未抓取的条目也有 full_content 字段
+        for item in news_items:
+            item.setdefault("full_content", "")
+
         return news_items
 
     def save_news(self, news_items, filename="data/raw_news.json"):
@@ -226,10 +248,11 @@ class NewsCollector:
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         with open(filename, "w", encoding="utf-8") as f:
             json.dump(news_items, f, indent=2, ensure_ascii=False)
-        print(f"Saved data to {filename}")
+        logger.info("Saved data to %s", filename)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
     collector = NewsCollector()
     news = collector.fetch_news(query="latest stock market news", count=5)
     collector.save_news(news)

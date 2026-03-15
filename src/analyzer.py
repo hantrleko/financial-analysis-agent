@@ -1,53 +1,33 @@
+import logging
 import os
+import re
+
 import yfinance as yf
-from google import genai
 from dotenv import load_dotenv
+from youdotcom import You
+from youdotcom.models import (
+    ExpressAgentRunsRequest,
+    AdvancedAgentRunsRequest,
+    ResearchTool,
+    SearchEffort,
+    ReportVerbosity,
+)
+
+from src.config import REPORT_SECTORS, SNAPSHOT_TICKERS, PREVIOUS_REPORT_MAX_CHARS
 
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+logger = logging.getLogger(__name__)
 
-REPORT_SECTORS = {
-    "宏观经济 Macro": "macro",
-    "股票个股 Stocks": "stocks",
-    "大宗商品 Commodities": "commodities",
-    "虚拟货币 Crypto": "crypto",
-    "外汇 Forex": "forex",
-    "债券固收 Bonds": "bonds",
-}
-
-SECTOR_KEYWORDS = {
-    "macro": "macroeconomics GDP inflation interest rates central bank monetary policy",
-    "stocks": "stock market equities earnings S&P 500 Nasdaq individual stocks",
-    "commodities": "commodities gold oil silver copper natural gas",
-    "crypto": "cryptocurrency bitcoin ethereum blockchain crypto market",
-    "forex": "foreign exchange forex currency USD EUR JPY",
-    "bonds": "bonds treasury yields fixed income credit spread",
-}
-
-# 市场快照使用的关键指标
-_SNAPSHOT_TICKERS = {
-    "S&P 500 (SPY)": "SPY",
-    "Nasdaq 100 (QQQ)": "QQQ",
-    "Dow Jones (DIA)": "DIA",
-    "Gold": "GC=F",
-    "Crude Oil (WTI)": "CL=F",
-    "Bitcoin": "BTC-USD",
-    "Ethereum": "ETH-USD",
-    "EUR/USD": "EURUSD=X",
-    "USD/JPY": "JPY=X",
-    "US 10Y Yield": "^TNX",
-    "VIX": "^VIX",
-}
+YOU_API_KEY = os.getenv("YOU_API_KEY")
 
 
 class FinancialAnalyzer:
     def __init__(self):
-        if not GEMINI_API_KEY:
-            raise ValueError("GEMINI_API_KEY not found in .env")
+        if not YOU_API_KEY:
+            raise ValueError("YOU_API_KEY not found in .env")
 
-        self.client = genai.Client(api_key=GEMINI_API_KEY)
-        self.model_name = "gemini-2.5-flash"
+        self.client = You(YOU_API_KEY)
 
     # ──────────────────── 辅助方法 ────────────────────
 
@@ -68,19 +48,33 @@ class FinancialAnalyzer:
 
     @staticmethod
     def fetch_market_snapshot():
-        """从 yfinance 拉取关键资产实时行情快照。"""
+        """从 yfinance 批量拉取关键资产实时行情快照。"""
+        tickers_list = list(SNAPSHOT_TICKERS.values())
+        name_by_ticker = {v: k for k, v in SNAPSHOT_TICKERS.items()}
+
+        try:
+            data = yf.download(tickers_list, period="5d", progress=False)
+        except Exception:
+            logger.exception("Failed to download market data")
+            return "Market data temporarily unavailable."
+
+        if data.empty:
+            return "Market data temporarily unavailable."
+
         lines = []
-        for name, ticker in _SNAPSHOT_TICKERS.items():
+        close = data["Close"]
+        for ticker in tickers_list:
             try:
-                hist = yf.Ticker(ticker).history(period="5d")
-                if hist.empty:
+                series = close[ticker].dropna()
+                if series.empty:
                     continue
-                current = hist["Close"].iloc[-1]
-                prev = hist["Close"].iloc[0]
+                current = series.iloc[-1]
+                prev = series.iloc[0]
                 change_pct = (current - prev) / prev * 100
+                name = name_by_ticker[ticker]
                 lines.append(f"  {name}: {current:.2f} ({change_pct:+.2f}% 5d)")
             except Exception:
-                pass
+                logger.debug("Skipping ticker %s", ticker, exc_info=True)
         return "\n".join(lines) if lines else "Market data temporarily unavailable."
 
     @staticmethod
@@ -135,76 +129,73 @@ The briefing should have the following sections:
 Format the output in clean Markdown.
 Keep it professional, data-driven, yet engaging."""
 
-    # ──────────────── Round 1: 事实提取 ────────────────
+    # ──────────────── 上期报告摘要 ────────────────
 
-    def _extract_facts(self, news_context, language="en"):
-        """Round 1: 从新闻中提取结构化关键事实和数据点。"""
-        lang = self._lang_instruction(language)
-        prompt = f"""You are a senior financial research analyst. Carefully read each article below and extract:
-
-1. **Key Facts & Data Points**: Specific numbers, percentages, dollar amounts, dates
-2. **Main Entities**: Companies, people, institutions mentioned and their roles
-3. **Market Signals**: Bullish or bearish implications, direction indicators
-4. **Cross-article Connections**: Note if multiple articles relate to the same theme
-
-Be thorough and precise. Extract ALL relevant data points — these will be used for deeper analysis.
-{lang}
-
-News Articles:
-{news_context}"""
-
-        try:
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
+    @staticmethod
+    def _summarize_previous_report(report, max_chars=PREVIOUS_REPORT_MAX_CHARS):
+        """提取上期报告的关键结论部分。"""
+        sections = []
+        for marker in ["Market Sentinel", "Outlook", "Key Drivers", "Actionable"]:
+            pattern = re.compile(
+                rf"(#+\s*.*?{re.escape(marker)}.*?\n)"  # heading line
+                rf"(.*?)(?=\n#+\s|\Z)",                  # body until next heading or end
+                re.DOTALL,
             )
-            return response.text
-        except Exception as e:
-            print(f"Round 1 fact extraction failed: {e}")
-            return ""
+            match = pattern.search(report)
+            if match:
+                sections.append(match.group(0).strip())
 
-    # ──────────────── Round 2: 最终分析 ────────────────
+        if sections:
+            return "\n\n".join(sections)[:max_chars]
+        return report[:max_chars]
 
-    def _build_final_prompt(self, facts_summary, market_snapshot,
-                            previous_report, briefing_length, language, sectors):
-        """构建注入了所有上下文的最终分析 prompt。"""
+    # ──────────────── 构建 Agent Input ────────────────
+
+    def _build_input(self, news_context, briefing_length, language, sectors,
+                     market_snapshot=None, previous_report=None):
+        """构建传入 You.com Agent 的 input 文本。"""
         structure = self._briefing_structure(briefing_length)
         lang = self._lang_instruction(language)
         sec = self._sector_instruction(sectors)
 
-        # 组装上下文块
-        context_blocks = []
+        parts = [
+            "You are an expert Wall Street Financial Analyst with 20 years of experience.",
+            f"\n## Collected News Articles\n{news_context}",
+        ]
 
-        context_blocks.append(f"""## Extracted Intelligence from Today's News
-{facts_summary}""")
-
-        context_blocks.append(f"""## Current Market Data (Real-time)
-{market_snapshot}""")
+        if market_snapshot:
+            parts.append(f"\n## Current Market Data (Real-time)\n{market_snapshot}")
 
         if previous_report:
-            context_blocks.append(f"""## Previous Report (for trend comparison)
-{previous_report[:1500]}""")
+            summary = self._summarize_previous_report(previous_report)
+            parts.append(f"\n## Previous Report (for trend comparison)\n{summary}")
 
-        all_context = "\n\n".join(context_blocks)
+        parts.append(f"\n## Your Task\nBased on ALL the above intelligence and data, {structure}")
 
-        prompt = f"""You are an expert Wall Street Financial Analyst with 20 years of experience.
+        parts.append("\n## Critical Requirements")
+        parts.append("- Reference SPECIFIC data points and numbers from the provided news articles")
+        parts.append("- Cross-reference news narratives with actual market data — note any contradictions")
+        if previous_report:
+            parts.append("- Compare with the previous report: highlight what has changed, what trends are continuing, and any reversals")
+        parts.append("- Provide concrete price levels, percentages, and metrics wherever possible")
+        parts.append("- Distinguish between confirmed facts and market speculation")
+        parts.append(f"{sec}{lang}")
 
-You have access to the following research materials:
+        return "\n".join(parts)
 
-{all_context}
+    # ──────────────── 提取报告文本 ────────────────
 
-## Your Task
-Based on ALL the above intelligence and data, {structure}
+    @staticmethod
+    def _extract_report(response):
+        """从 Agent 响应中提取报告文本。"""
+        if not response or not response.output:
+            return "No response from AI agent."
 
-## Critical Requirements
-- Reference SPECIFIC data points and numbers from the extracted intelligence
-- Cross-reference news narratives with actual market data — note any contradictions
-- {"Compare with the previous report: highlight what has changed, what trends are continuing, and any reversals" if previous_report else ""}
-- Provide concrete price levels, percentages, and metrics wherever possible
-- Distinguish between confirmed facts and market speculation
-{sec}{lang}"""
+        for item in response.output:
+            if hasattr(item, 'text') and item.text:
+                return item.text
 
-        return prompt
+        return "No report content in response."
 
     # ──────────────── 公共 API ────────────────
 
@@ -212,7 +203,7 @@ Based on ALL the above intelligence and data, {structure}
                      sectors=None, previous_report=None, deep_analysis=False):
         """
         分析新闻并生成简报。
-        deep_analysis=True 时启用多轮分析 + 市场数据注入。
+        deep_analysis=True 时使用 Advanced Agent + ResearchTool 进行深度分析。
         """
         if not news_items:
             return "No news to analyze."
@@ -220,49 +211,51 @@ Based on ALL the above intelligence and data, {structure}
         news_context = self._build_news_context(news_items)
 
         if not deep_analysis:
-            # 轻量模式：保持原有单次调用行为
-            structure = self._briefing_structure(briefing_length)
-            lang = self._lang_instruction(language)
-            sec = self._sector_instruction(sectors)
-            prompt = f"""You are an expert Wall Street Financial Analyst.
-{structure}
-{sec}{lang}
-
-News Data:
-{news_context}"""
+            # 轻量模式：Express Agent（快速）
+            input_text = self._build_input(
+                news_context=news_context,
+                briefing_length=briefing_length,
+                language=language,
+                sectors=sectors,
+            )
             try:
-                response = self.client.models.generate_content(
-                    model=self.model_name, contents=prompt)
-                return response.text
+                response = self.client.agents.runs.create(
+                    request=ExpressAgentRunsRequest(input=input_text),
+                )
+                return self._extract_report(response)
             except Exception as e:
                 return f"Analysis failed: {e}"
 
-        # ── 深度分析模式 ──
-        print(f"[Deep Analysis] Analyzing {len(news_items)} articles...")
-
-        # Round 1: 提取事实
-        print("[Round 1/2] Extracting key facts and data points...")
-        facts = self._extract_facts(news_context, language)
+        # ── 深度分析模式：Advanced Agent + ResearchTool ──
+        logger.info("Analyzing %d articles (deep analysis)...", len(news_items))
 
         # 拉取实时市场数据
-        print("[Market Data] Fetching real-time market snapshot...")
+        logger.info("Fetching real-time market snapshot...")
         snapshot = self.fetch_market_snapshot()
 
-        # Round 2: 综合分析
-        print("[Round 2/2] Synthesizing final report...")
-        prompt = self._build_final_prompt(
-            facts_summary=facts or news_context,
-            market_snapshot=snapshot,
-            previous_report=previous_report,
+        input_text = self._build_input(
+            news_context=news_context,
             briefing_length=briefing_length,
             language=language,
             sectors=sectors,
+            market_snapshot=snapshot,
+            previous_report=previous_report,
         )
 
+        logger.info("Synthesizing report with Advanced Agent + Research...")
         try:
-            response = self.client.models.generate_content(
-                model=self.model_name, contents=prompt)
-            return response.text
+            response = self.client.agents.runs.create(
+                request=AdvancedAgentRunsRequest(
+                    input=input_text,
+                    tools=[
+                        ResearchTool(
+                            search_effort=SearchEffort.HIGH,
+                            report_verbosity=ReportVerbosity.HIGH,
+                        ),
+                    ],
+                ),
+            )
+            return self._extract_report(response)
         except Exception as e:
             return f"Analysis failed: {e}"
 
@@ -270,8 +263,8 @@ News Data:
                             sectors=None, previous_report=None, deep_analysis=False,
                             on_status=None):
         """
-        流式版本：逐块 yield 分析结果。
-        on_status: 可选回调函数，用于在 UI 中显示当前阶段。
+        分析新闻并生成简报（yield 方式）。
+        You.com Agent API 不支持逐 token 流式，一次性返回完整结果。
         """
         if not news_items:
             yield "No news to analyze."
@@ -281,55 +274,55 @@ News Data:
 
         if not deep_analysis:
             # 轻量模式
-            structure = self._briefing_structure(briefing_length)
-            lang = self._lang_instruction(language)
-            sec = self._sector_instruction(sectors)
-            prompt = f"""You are an expert Wall Street Financial Analyst.
-{structure}
-{sec}{lang}
-
-News Data:
-{news_context}"""
+            if on_status:
+                on_status("🔍 Analyzing with Express Agent...")
+            input_text = self._build_input(
+                news_context=news_context,
+                briefing_length=briefing_length,
+                language=language,
+                sectors=sectors,
+            )
             try:
-                response = self.client.models.generate_content_stream(
-                    model=self.model_name, contents=prompt)
-                for chunk in response:
-                    if chunk.text:
-                        yield chunk.text
+                response = self.client.agents.runs.create(
+                    request=ExpressAgentRunsRequest(input=input_text),
+                )
+                yield self._extract_report(response)
             except Exception as e:
                 yield f"Analysis failed: {e}"
             return
 
         # ── 深度分析模式 ──
 
-        # Round 1: 提取事实（非流式）
-        if on_status:
-            on_status("🔬 [Round 1/2] Extracting key facts and data points...")
-        facts = self._extract_facts(news_context, language)
-
         # 市场数据
         if on_status:
             on_status("📊 Fetching real-time market data...")
         snapshot = self.fetch_market_snapshot()
 
-        # Round 2: 综合分析（流式输出）
-        if on_status:
-            on_status("📝 [Round 2/2] Synthesizing final report...")
-        prompt = self._build_final_prompt(
-            facts_summary=facts or news_context,
-            market_snapshot=snapshot,
-            previous_report=previous_report,
+        input_text = self._build_input(
+            news_context=news_context,
             briefing_length=briefing_length,
             language=language,
             sectors=sectors,
+            market_snapshot=snapshot,
+            previous_report=previous_report,
         )
 
+        # Advanced Agent + Research
+        if on_status:
+            on_status("🔬 Deep analysis in progress (Advanced Agent + Research)...")
         try:
-            response = self.client.models.generate_content_stream(
-                model=self.model_name, contents=prompt)
-            for chunk in response:
-                if chunk.text:
-                    yield chunk.text
+            response = self.client.agents.runs.create(
+                request=AdvancedAgentRunsRequest(
+                    input=input_text,
+                    tools=[
+                        ResearchTool(
+                            search_effort=SearchEffort.HIGH,
+                            report_verbosity=ReportVerbosity.HIGH,
+                        ),
+                    ],
+                ),
+            )
+            yield self._extract_report(response)
         except Exception as e:
             yield f"Analysis failed: {e}"
 
@@ -338,10 +331,11 @@ News Data:
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         with open(filename, "w", encoding="utf-8") as f:
             f.write(analysis_text)
-        print(f"Saved analysis to {filename}")
+        logger.info("Saved analysis to %s", filename)
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     analyzer = FinancialAnalyzer()
     mock_news = [
         {"title": "Tech Stocks Rally", "source": "Bloomberg",
@@ -350,8 +344,8 @@ if __name__ == "__main__":
          "description": "Powell signals no cuts yet.", "published_age": "2h"}
     ]
     # 测试轻量模式
-    print("=== Light Mode ===")
-    print(analyzer.analyze_news(mock_news))
+    logger.info("=== Light Mode ===")
+    logger.info(analyzer.analyze_news(mock_news))
     # 测试深度模式
-    print("\n=== Deep Mode ===")
-    print(analyzer.analyze_news(mock_news, deep_analysis=True))
+    logger.info("=== Deep Mode ===")
+    logger.info(analyzer.analyze_news(mock_news, deep_analysis=True))

@@ -1,35 +1,26 @@
 import os
 import sys
+import logging
 from datetime import datetime
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 
 # 项目根目录加入 sys.path，以便导入 src 模块
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import streamlit as st
 
+from src.config import VERSION, AVAILABLE_SOURCES, REPORT_SECTORS
 from src.collector import NewsCollector
-from src.analyzer import FinancialAnalyzer, REPORT_SECTORS, SECTOR_KEYWORDS
+from src.analyzer import FinancialAnalyzer
 from src.media_gen import MediaGenerator, VOICE_PRESETS, EDGE_VOICE_PRESETS, TTS_ENGINES
 from src.history import HistoryManager
 from src.visualizer import ASSET_GROUPS, create_asset_dashboard
-
-VERSION = "v1.3"
 
 # 基础路径
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 HISTORY_DIR = os.path.join(BASE_DIR, "history")
-
-# 可选新闻源
-AVAILABLE_SOURCES = [
-    "Bloomberg",
-    "Reuters",
-    "AP News",
-    "Yahoo Finance",
-    "CNBC",
-    "Financial Times",
-    "Wall Street Journal",
-]
 
 # 时间范围映射
 TIME_RANGE_OPTIONS = {
@@ -56,6 +47,24 @@ st.set_page_config(
     page_icon="🏦",
     layout="wide",
 )
+
+# ──────────────────────────── 访问密码 ────────────────────────────
+ACCESS_PASSWORD = os.getenv("ACCESS_PASSWORD", "")
+
+if ACCESS_PASSWORD:
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    if not st.session_state["authenticated"]:
+        st.title("🏦 Automated Financial Analysis System")
+        pwd = st.text_input("🔒 Please enter access password", type="password")
+        if pwd:
+            if pwd == ACCESS_PASSWORD:
+                st.session_state["authenticated"] = True
+                st.rerun()
+            else:
+                st.error("Wrong password.")
+        st.stop()
 
 st.title("🏦 Automated Financial Analysis System")
 st.caption(f"Version {VERSION}")
@@ -143,7 +152,7 @@ st.sidebar.subheader("🔬 Deep Analysis")
 deep_analysis = st.sidebar.checkbox(
     "Enable Deep Analysis",
     value=True,
-    help="开启后将：1) 抓取文章全文 2) 注入实时市场数据 3) 多轮 AI 分析 4) 对比上期报告。耗时更长但深度显著提升。",
+    help="开启后将：1) 抓取文章全文 2) 注入实时市场数据 3) Advanced Agent + Research 深度分析 4) 对比上期报告。耗时更长但深度显著提升。",
 )
 scrape_content = st.sidebar.checkbox(
     "Scrape Full Articles",
@@ -264,7 +273,7 @@ with tab_analysis:
                         if prev_data and prev_data.get("report"):
                             previous_report = prev_data["report"]
 
-                # 2. Gemini 流式分析
+                # 2. You.com AI 分析
                 st.subheader("📝 Analysis Report")
                 analyzer = FinancialAnalyzer()
 
@@ -415,7 +424,24 @@ with tab_charts:
 with tab_history:
     try:
         hm = HistoryManager(history_dir=HISTORY_DIR)
-        runs = hm.list_runs()
+
+        # Search controls
+        hist_col1, hist_col2, hist_col3 = st.columns([2, 1, 1])
+        with hist_col1:
+            hist_keyword = st.text_input("🔍 Search keyword", key="hist_keyword", placeholder="Search in query or report...")
+        with hist_col2:
+            hist_date_from = st.date_input("From", value=None, key="hist_date_from")
+        with hist_col3:
+            hist_date_to = st.date_input("To", value=None, key="hist_date_to")
+
+        # Use search_runs if filters are active, otherwise list_runs
+        if hist_keyword or hist_date_from or hist_date_to:
+            date_from_str = hist_date_from.isoformat() if hist_date_from else None
+            date_to_str = hist_date_to.isoformat() if hist_date_to else None
+            runs = hm.search_runs(keyword=hist_keyword or None, date_from=date_from_str, date_to=date_to_str)
+            st.caption(f"Found {len(runs)} matching records")
+        else:
+            runs = hm.list_runs()
 
         if not runs:
             st.info("No history yet. Run an analysis to get started!")

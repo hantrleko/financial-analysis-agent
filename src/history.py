@@ -1,7 +1,10 @@
 import os
 import json
+import logging
 import shutil
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class HistoryManager:
@@ -52,7 +55,7 @@ class HistoryManager:
         if pdf_file and os.path.exists(pdf_file):
             shutil.copy2(pdf_file, os.path.join(run_dir, "briefing.pdf"))
 
-        print(f"Run saved to {run_dir}")
+        logger.info("Run saved to %s", run_dir)
         return run_id
 
     def list_runs(self):
@@ -116,6 +119,54 @@ class HistoryManager:
         run_dir = os.path.join(self.history_dir, run_id)
         if os.path.exists(run_dir):
             shutil.rmtree(run_dir)
-            print(f"Deleted run: {run_id}")
+            logger.info("Deleted run: %s", run_id)
             return True
         return False
+
+    def search_runs(self, keyword=None, date_from=None, date_to=None):
+        """
+        搜索/过滤历史记录。
+        keyword: 在 query 和 report 中搜索关键词（不区分大小写）
+        date_from: 起始日期 (str "YYYY-MM-DD" 或 datetime)
+        date_to: 结束日期 (str "YYYY-MM-DD" 或 datetime)
+        返回符合条件的 metadata 列表（按时间倒序）。
+        """
+        if isinstance(date_from, str):
+            date_from = datetime.fromisoformat(date_from)
+        if isinstance(date_to, str):
+            date_to = datetime.fromisoformat(date_to)
+
+        results = []
+        for meta in self.list_runs():
+            # Filter by date range
+            ts = datetime.fromisoformat(meta["timestamp"])
+            if date_from and ts < date_from:
+                continue
+            if date_to and ts > date_to:
+                continue
+
+            # Filter by keyword
+            if keyword:
+                kw_lower = keyword.lower()
+                query_text = meta.get("query", "")
+                if kw_lower in query_text.lower():
+                    results.append(meta)
+                    continue
+                # Keyword not in query — check report content
+                report_path = os.path.join(
+                    self.history_dir, meta["run_id"], "report.md"
+                )
+                if os.path.exists(report_path):
+                    with open(report_path, "r", encoding="utf-8") as f:
+                        report_text = f.read()
+                    if kw_lower in report_text.lower():
+                        results.append(meta)
+                        continue
+            else:
+                results.append(meta)
+
+        return results
+
+    def get_run_count(self):
+        """返回历史记录总数。"""
+        return len(self.list_runs())

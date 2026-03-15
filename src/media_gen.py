@@ -1,6 +1,8 @@
 import os
 import re
 import asyncio
+import logging
+import platform
 from datetime import datetime
 from elevenlabs import VoiceSettings
 from elevenlabs.client import ElevenLabs
@@ -8,6 +10,8 @@ from fpdf import FPDF
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
@@ -48,6 +52,46 @@ LANGUAGE_MODELS = {
     "zh": "eleven_multilingual_v2",
 }
 
+# Emoji / symbol regex: covers supplementary planes, dingbats, misc symbols,
+# en-dash, em-dash, smart quotes, and other chars outside Latin-1.
+_EMOJI_RE = re.compile(
+    r'[\U00010000-\U0010ffff]'   # Supplementary planes (emoji etc.)
+    r'|[\u2600-\u27BF]'          # Misc symbols, dingbats
+    r'|[\uFE00-\uFE0F]'          # Variation selectors
+    r'|[\u2700-\u27BF]'          # Dingbats
+    r'|[\u2300-\u23FF]'          # Misc technical
+    r'|[\u200D]'                 # Zero-width joiner
+    r'|[\u20E3]'                 # Combining enclosing keycap
+    r'|[\u2640-\u2642]'          # Gender symbols
+    r'|[\u2194-\u21AA]'          # Arrows
+    r'|[\u2010-\u2015]'          # Dashes (incl. en-dash, em-dash)
+    r'|[\u2018-\u201F]'          # Smart quotes
+    r'|[\u2026]'                 # Ellipsis
+    r'|[\u2022]'                 # Bullet
+)
+
+
+def _find_cjk_font():
+    """Locate a CJK font on the current platform. Returns path or None."""
+    system = platform.system()
+    if system == "Windows":
+        candidates = [r"C:\Windows\Fonts\msyh.ttc", r"C:\Windows\Fonts\msyh.ttf"]
+    elif system == "Darwin":
+        candidates = [
+            "/System/Library/Fonts/PingFang.ttc",
+            "/System/Library/Fonts/STHeiti Light.ttc",
+        ]
+    else:
+        candidates = [
+            "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+            "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+        ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return None
+
 
 class MediaGenerator:
     def __init__(self):
@@ -62,6 +106,10 @@ class MediaGenerator:
             self._client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
         return self._client
 
+    # ------------------------------------------------------------------
+    # TTS
+    # ------------------------------------------------------------------
+
     def generate_audio(self, text, output_file="data/daily_briefing.mp3",
                        language="en", voice_name=None, tts_engine="elevenlabs"):
         """
@@ -74,8 +122,10 @@ class MediaGenerator:
             return self.generate_audio_edge(text, output_file, language, voice_name)
 
         if not ELEVENLABS_API_KEY:
-            print("Skipping ElevenLabs audio (No API Key). Consider using Edge TTS.")
+            logger.warning("Skipping ElevenLabs audio (No API Key). Consider using Edge TTS.")
             return None
+
+        text = self._clean_for_tts(text)
 
         # 选择语音
         presets = VOICE_PRESETS.get(language, VOICE_PRESETS["en"])
@@ -86,7 +136,7 @@ class MediaGenerator:
 
         model_id = LANGUAGE_MODELS.get(language, "eleven_monolingual_v1")
 
-        print(f"Generating audio (lang={language}, voice={voice_name}, model={model_id})...")
+        logger.info("Generating audio (lang=%s, voice=%s, model=%s)...", language, voice_name, model_id)
 
         try:
             audio = self.client.text_to_speech.convert(
@@ -109,11 +159,11 @@ class MediaGenerator:
                     if chunk:
                         f.write(chunk)
 
-            print(f"Audio saved to {output_file}")
+            logger.info("Audio saved to %s", output_file)
             return output_file
 
         except Exception as e:
-            print(f"Error generating audio: {e}")
+            logger.error("Error generating audio: %s", e)
             return None
 
     def generate_audio_edge(self, text, output_file="data/daily_briefing.mp3",
@@ -126,8 +176,10 @@ class MediaGenerator:
         try:
             import edge_tts
         except ImportError:
-            print("Error: edge-tts not installed. Run: pip install edge-tts")
+            logger.error("edge-tts not installed. Run: pip install edge-tts")
             return None
+
+        text = self._clean_for_tts(text)
 
         presets = EDGE_VOICE_PRESETS.get(language, EDGE_VOICE_PRESETS["en"])
         if voice_name and voice_name in presets:
@@ -135,7 +187,7 @@ class MediaGenerator:
         else:
             voice = list(presets.values())[0]
 
-        print(f"Generating audio with Edge TTS (lang={language}, voice={voice})...")
+        logger.info("Generating audio with Edge TTS (lang=%s, voice=%s)...", language, voice)
 
         try:
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -152,40 +204,44 @@ class MediaGenerator:
                 nest_asyncio.apply()
 
             asyncio.run(communicate.save(output_file))
-            print(f"Audio saved to {output_file}")
+            logger.info("Audio saved to %s", output_file)
             return output_file
         except Exception as e:
-            print(f"Error generating audio with Edge TTS: {e}")
+            logger.error("Error generating audio with Edge TTS: %s", e)
             return None
+
+    # ------------------------------------------------------------------
+    # PDF
+    # ------------------------------------------------------------------
 
     def generate_pdf(self, report_text, output_file="data/daily_briefing.pdf",
                      language="en", title="Financial Analysis Briefing"):
         """
         将分析报告导出为 PDF，支持中英文。
         """
-        print(f"Generating PDF (lang={language})...")
+        logger.info("Generating PDF (lang=%s)...", language)
 
         try:
             pdf = FPDF()
             pdf.set_auto_page_break(auto=True, margin=15)
             pdf.add_page()
 
-            # 注册中文字体（Windows 系统自带微软雅黑）
+            # 注册中文字体（跨平台检测）
             if language == "zh":
-                font_path = r"C:\Windows\Fonts\msyh.ttc"
-                if os.path.exists(font_path):
-                    pdf.add_font("msyh", "", font_path)
-                    pdf.add_font("msyh", "B", font_path)
-                    font_name = "msyh"
+                font_path = _find_cjk_font()
+                if font_path:
+                    pdf.add_font("cjk", "", font_path)
+                    pdf.add_font("cjk", "B", font_path)
+                    font_name = "cjk"
                 else:
-                    print("Warning: Microsoft YaHei font not found, falling back to Helvetica.")
+                    logger.warning("CJK font not found on this system, falling back to Helvetica.")
                     font_name = "Helvetica"
             else:
                 font_name = "Helvetica"
 
             # 标题
             pdf.set_font(font_name, "B", 18)
-            pdf.cell(0, 12, title, new_x="LMARGIN", new_y="NEXT", align="C")
+            pdf.cell(0, 12, self._strip_emoji(title), new_x="LMARGIN", new_y="NEXT", align="C")
             pdf.ln(4)
 
             # 日期
@@ -199,12 +255,16 @@ class MediaGenerator:
 
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
             pdf.output(output_file)
-            print(f"PDF saved to {output_file}")
+            logger.info("PDF saved to %s", output_file)
             return output_file
 
         except Exception as e:
-            print(f"Error generating PDF: {e}")
+            logger.error("Error generating PDF: %s", e)
             return None
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
     def _render_markdown(self, pdf, text, font_name):
         """增强型 Markdown 渲染：支持标题、列表、编号列表、表格、分隔线"""
@@ -249,7 +309,7 @@ class MediaGenerator:
             elif stripped.startswith(("- ", "* ")):
                 pdf.set_font(font_name, "", 11)
                 pdf.cell(6)
-                pdf.multi_cell(0, 6, "• " + self._strip_md(stripped[2:]))
+                pdf.multi_cell(0, 6, "- " + self._strip_md(stripped[2:]))
                 pdf.ln(1)
             # 编号列表 (1. 2. 3. ...)
             elif re.match(r'^(\d+)\.\s', stripped):
@@ -316,18 +376,52 @@ class MediaGenerator:
             pdf.ln()
 
     @staticmethod
+    def _strip_emoji(text):
+        """Remove emoji and special symbols that common PDF fonts cannot render."""
+        return _EMOJI_RE.sub('', text)
+
+    @staticmethod
     def _strip_md(text):
-        """去除 Markdown 格式符号"""
+        """去除 Markdown 格式符号 and emoji/symbols unsafe for PDF fonts."""
         text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
         text = re.sub(r'\*(.+?)\*', r'\1', text)
         text = re.sub(r'__(.+?)__', r'\1', text)
         text = re.sub(r'_(.+?)_', r'\1', text)
         text = re.sub(r'`(.+?)`', r'\1', text)
         text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)  # [link](url) → link
+        text = _EMOJI_RE.sub('', text)
         return text
+
+    @staticmethod
+    def _clean_for_tts(text):
+        """Strip Markdown formatting and emoji so TTS engines receive clean prose."""
+        # Remove header markers
+        text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+        # Remove bold / italic
+        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+        text = re.sub(r'\*(.+?)\*', r'\1', text)
+        text = re.sub(r'__(.+?)__', r'\1', text)
+        text = re.sub(r'_(.+?)_', r'\1', text)
+        # Remove inline code
+        text = re.sub(r'`(.+?)`', r'\1', text)
+        # Remove table rows (lines that start/end with |)
+        text = re.sub(r'^\|.*\|$', '', text, flags=re.MULTILINE)
+        # Remove horizontal rules
+        text = re.sub(r'^-{3,}$', '', text, flags=re.MULTILINE)
+        text = re.sub(r'^\*{3,}$', '', text, flags=re.MULTILINE)
+        # Remove blockquote markers
+        text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)
+        # Convert links to just text
+        text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
+        # Remove emoji
+        text = _EMOJI_RE.sub('', text)
+        # Collapse multiple blank lines into one
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        return text.strip()
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     gen = MediaGenerator()
     text = "This is a test of the automated financial analysis system. Markets are up today."
     audio = gen.generate_audio(text, "data/test_audio.mp3", language="en",
