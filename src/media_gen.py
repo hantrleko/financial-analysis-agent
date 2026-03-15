@@ -8,6 +8,7 @@ from elevenlabs import VoiceSettings
 from elevenlabs.client import ElevenLabs
 from fpdf import FPDF
 from dotenv import load_dotenv
+from src.config import TTS_MAX_CHARS_PER_CHUNK, EDGE_TTS_MAX_CHARS_PER_CHUNK
 
 load_dotenv()
 
@@ -126,6 +127,7 @@ class MediaGenerator:
             return None
 
         text = self._clean_for_tts(text)
+        chunks = self._split_text_for_tts(text, TTS_MAX_CHARS_PER_CHUNK)
 
         # 选择语音
         presets = VOICE_PRESETS.get(language, VOICE_PRESETS["en"])
@@ -136,28 +138,59 @@ class MediaGenerator:
 
         model_id = LANGUAGE_MODELS.get(language, "eleven_monolingual_v1")
 
-        logger.info("Generating audio (lang=%s, voice=%s, model=%s)...", language, voice_name, model_id)
+        logger.info("Generating audio (lang=%s, voice=%s, model=%s, chunks=%d)...",
+                     language, voice_name, model_id, len(chunks))
 
         try:
-            audio = self.client.text_to_speech.convert(
-                voice_id=voice_id,
-                model_id=model_id,
-                optimize_streaming_latency="0",
-                output_format="mp3_22050_32",
-                text=text,
-                voice_settings=VoiceSettings(
-                    stability=0.7,
-                    similarity_boost=0.75,
-                    style=0.0,
-                    use_speaker_boost=True,
-                ),
-            )
-
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
-            with open(output_file, "wb") as f:
-                for chunk in audio:
-                    if chunk:
-                        f.write(chunk)
+
+            if len(chunks) == 1:
+                audio = self.client.text_to_speech.convert(
+                    voice_id=voice_id,
+                    model_id=model_id,
+                    optimize_streaming_latency="0",
+                    output_format="mp3_22050_32",
+                    text=chunks[0],
+                    voice_settings=VoiceSettings(
+                        stability=0.7,
+                        similarity_boost=0.75,
+                        style=0.0,
+                        use_speaker_boost=True,
+                    ),
+                )
+                with open(output_file, "wb") as f:
+                    for chunk in audio:
+                        if chunk:
+                            f.write(chunk)
+            else:
+                part_files = []
+                for i, text_chunk in enumerate(chunks):
+                    part_file = output_file + f".part{i}.mp3"
+                    part_files.append(part_file)
+                    audio = self.client.text_to_speech.convert(
+                        voice_id=voice_id,
+                        model_id=model_id,
+                        optimize_streaming_latency="0",
+                        output_format="mp3_22050_32",
+                        text=text_chunk,
+                        voice_settings=VoiceSettings(
+                            stability=0.7,
+                            similarity_boost=0.75,
+                            style=0.0,
+                            use_speaker_boost=True,
+                        ),
+                    )
+                    with open(part_file, "wb") as f:
+                        for chunk in audio:
+                            if chunk:
+                                f.write(chunk)
+                # 合并临时文件（MP3 可直接二进制拼接）
+                with open(output_file, "wb") as out:
+                    for part_file in part_files:
+                        with open(part_file, "rb") as pf:
+                            out.write(pf.read())
+                for part_file in part_files:
+                    os.remove(part_file)
 
             logger.info("Audio saved to %s", output_file)
             return output_file
@@ -180,6 +213,7 @@ class MediaGenerator:
             return None
 
         text = self._clean_for_tts(text)
+        chunks = self._split_text_for_tts(text, EDGE_TTS_MAX_CHARS_PER_CHUNK)
 
         presets = EDGE_VOICE_PRESETS.get(language, EDGE_VOICE_PRESETS["en"])
         if voice_name and voice_name in presets:
@@ -187,11 +221,11 @@ class MediaGenerator:
         else:
             voice = list(presets.values())[0]
 
-        logger.info("Generating audio with Edge TTS (lang=%s, voice=%s)...", language, voice)
+        logger.info("Generating audio with Edge TTS (lang=%s, voice=%s, chunks=%d)...",
+                     language, voice, len(chunks))
 
         try:
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
-            communicate = edge_tts.Communicate(text, voice)
 
             # 兼容 Streamlit 等已有事件循环的环境
             try:
@@ -203,7 +237,30 @@ class MediaGenerator:
                 import nest_asyncio
                 nest_asyncio.apply()
 
-            asyncio.run(communicate.save(output_file))
+            def _run_async(coro):
+                if loop and loop.is_running():
+                    loop.run_until_complete(coro)
+                else:
+                    asyncio.run(coro)
+
+            if len(chunks) == 1:
+                communicate = edge_tts.Communicate(chunks[0], voice)
+                _run_async(communicate.save(output_file))
+            else:
+                part_files = []
+                for i, text_chunk in enumerate(chunks):
+                    part_file = output_file + f".part{i}.mp3"
+                    part_files.append(part_file)
+                    communicate = edge_tts.Communicate(text_chunk, voice)
+                    _run_async(communicate.save(part_file))
+                # 合并临时文件（MP3 可直接二进制拼接）
+                with open(output_file, "wb") as out:
+                    for part_file in part_files:
+                        with open(part_file, "rb") as pf:
+                            out.write(pf.read())
+                for part_file in part_files:
+                    os.remove(part_file)
+
             logger.info("Audio saved to %s", output_file)
             return output_file
         except Exception as e:
@@ -391,6 +448,25 @@ class MediaGenerator:
         text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)  # [link](url) → link
         text = _EMOJI_RE.sub('', text)
         return text
+
+    @staticmethod
+    def _split_text_for_tts(text, max_chars):
+        """将长文本按段落边界分割为不超过 max_chars 的块。"""
+        if len(text) <= max_chars:
+            return [text]
+
+        chunks = []
+        current = ""
+        for paragraph in text.split("\n\n"):
+            if len(current) + len(paragraph) + 2 > max_chars:
+                if current:
+                    chunks.append(current.strip())
+                current = paragraph
+            else:
+                current = current + "\n\n" + paragraph if current else paragraph
+        if current.strip():
+            chunks.append(current.strip())
+        return chunks if chunks else [text[:max_chars]]
 
     @staticmethod
     def _clean_for_tts(text):

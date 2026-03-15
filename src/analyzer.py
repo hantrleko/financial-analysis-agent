@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+from datetime import datetime, timezone
 
 import yfinance as yf
 from dotenv import load_dotenv
@@ -13,7 +14,10 @@ from youdotcom.models import (
     ReportVerbosity,
 )
 
-from src.config import REPORT_SECTORS, SNAPSHOT_TICKERS, PREVIOUS_REPORT_MAX_CHARS
+from src.config import (
+    REPORT_SECTORS, SNAPSHOT_TICKERS, PREVIOUS_REPORT_MAX_CHARS,
+    TIME_RANGE_PERIOD_MAP, PREVIOUS_REPORT_MAX_AGE_HOURS,
+)
 
 load_dotenv()
 
@@ -47,13 +51,14 @@ class FinancialAnalyzer:
         return "".join(parts)
 
     @staticmethod
-    def fetch_market_snapshot():
+    def fetch_market_snapshot(time_range="week"):
         """从 yfinance 批量拉取关键资产实时行情快照。"""
         tickers_list = list(SNAPSHOT_TICKERS.values())
         name_by_ticker = {v: k for k, v in SNAPSHOT_TICKERS.items()}
+        period = TIME_RANGE_PERIOD_MAP.get(time_range, "5d")
 
         try:
-            data = yf.download(tickers_list, period="5d", progress=False)
+            data = yf.download(tickers_list, period=period, progress=False)
         except Exception:
             logger.exception("Failed to download market data")
             return "Market data temporarily unavailable."
@@ -132,10 +137,24 @@ Keep it professional, data-driven, yet engaging."""
     # ──────────────── 上期报告摘要 ────────────────
 
     @staticmethod
+    def _is_previous_report_valid(prev_metadata):
+        """校验上期报告是否在有效时间范围内。"""
+        try:
+            ts = prev_metadata.get("timestamp", "")
+            report_time = datetime.fromisoformat(ts)
+            if report_time.tzinfo is None:
+                report_time = report_time.replace(tzinfo=timezone.utc)
+            age_hours = (datetime.now(timezone.utc) - report_time).total_seconds() / 3600
+            return age_hours <= PREVIOUS_REPORT_MAX_AGE_HOURS
+        except Exception:
+            return False
+
+    @staticmethod
     def _summarize_previous_report(report, max_chars=PREVIOUS_REPORT_MAX_CHARS):
         """提取上期报告的关键结论部分。"""
         sections = []
-        for marker in ["Market Sentinel", "Outlook", "Key Drivers", "Actionable"]:
+        for marker in ["Market Sentinel", "Outlook", "Key Drivers", "Actionable",
+                        "市场哨兵", "展望", "关键驱动", "可操作", "风险", "宏观"]:
             pattern = re.compile(
                 rf"(#+\s*.*?{re.escape(marker)}.*?\n)"  # heading line
                 rf"(.*?)(?=\n#+\s|\Z)",                  # body until next heading or end
@@ -200,7 +219,8 @@ Keep it professional, data-driven, yet engaging."""
     # ──────────────── 公共 API ────────────────
 
     def analyze_news(self, news_items, briefing_length="medium", language="en",
-                     sectors=None, previous_report=None, deep_analysis=False):
+                     sectors=None, previous_report=None, deep_analysis=False,
+                     time_range="week", previous_report_meta=None):
         """
         分析新闻并生成简报。
         deep_analysis=True 时使用 Advanced Agent + ResearchTool 进行深度分析。
@@ -208,15 +228,23 @@ Keep it professional, data-driven, yet engaging."""
         if not news_items:
             return "No news to analyze."
 
+        # 校验上期报告有效性
+        if previous_report_meta and not self._is_previous_report_valid(previous_report_meta):
+            logger.info("Previous report is too old or metadata invalid, skipping comparison.")
+            previous_report = None
+
         news_context = self._build_news_context(news_items)
 
         if not deep_analysis:
-            # 轻量模式：Express Agent（快速）
+            # 轻量模式：Express Agent（快速）+ 市场数据
+            snapshot = self.fetch_market_snapshot(time_range=time_range)
             input_text = self._build_input(
                 news_context=news_context,
                 briefing_length=briefing_length,
                 language=language,
                 sectors=sectors,
+                market_snapshot=snapshot,
+                previous_report=previous_report,
             )
             try:
                 response = self.client.agents.runs.create(
@@ -231,7 +259,7 @@ Keep it professional, data-driven, yet engaging."""
 
         # 拉取实时市场数据
         logger.info("Fetching real-time market snapshot...")
-        snapshot = self.fetch_market_snapshot()
+        snapshot = self.fetch_market_snapshot(time_range=time_range)
 
         input_text = self._build_input(
             news_context=news_context,
@@ -261,7 +289,7 @@ Keep it professional, data-driven, yet engaging."""
 
     def analyze_news_stream(self, news_items, briefing_length="medium", language="en",
                             sectors=None, previous_report=None, deep_analysis=False,
-                            on_status=None):
+                            on_status=None, time_range="week", previous_report_meta=None):
         """
         分析新闻并生成简报（yield 方式）。
         You.com Agent API 不支持逐 token 流式，一次性返回完整结果。
@@ -270,17 +298,25 @@ Keep it professional, data-driven, yet engaging."""
             yield "No news to analyze."
             return
 
+        # 校验上期报告有效性
+        if previous_report_meta and not self._is_previous_report_valid(previous_report_meta):
+            logger.info("Previous report is too old or metadata invalid, skipping comparison.")
+            previous_report = None
+
         news_context = self._build_news_context(news_items)
 
         if not deep_analysis:
-            # 轻量模式
+            # 轻量模式 + 市场数据
             if on_status:
                 on_status("🔍 Analyzing with Express Agent...")
+            snapshot = self.fetch_market_snapshot(time_range=time_range)
             input_text = self._build_input(
                 news_context=news_context,
                 briefing_length=briefing_length,
                 language=language,
                 sectors=sectors,
+                market_snapshot=snapshot,
+                previous_report=previous_report,
             )
             try:
                 response = self.client.agents.runs.create(
@@ -296,7 +332,7 @@ Keep it professional, data-driven, yet engaging."""
         # 市场数据
         if on_status:
             on_status("📊 Fetching real-time market data...")
-        snapshot = self.fetch_market_snapshot()
+        snapshot = self.fetch_market_snapshot(time_range=time_range)
 
         input_text = self._build_input(
             news_context=news_context,

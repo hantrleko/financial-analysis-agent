@@ -53,14 +53,15 @@ def main():
 
     # 3. Load previous report for comparison
     previous_report = None
-    if deep_analysis:
-        hm = HistoryManager(history_dir=HISTORY_DIR)
-        prev_runs = hm.list_runs()
-        if prev_runs:
-            prev_data = hm.load_run(prev_runs[0]["run_id"])
-            if prev_data and prev_data.get("report"):
-                previous_report = prev_data["report"]
-                logger.info(f"[Context] Loaded previous report ({len(previous_report)} chars) for trend comparison.")
+    previous_report_meta = None
+    hm = HistoryManager(history_dir=HISTORY_DIR)
+    prev_runs = hm.list_runs()
+    if prev_runs:
+        prev_data = hm.load_run(prev_runs[0]["run_id"])
+        if prev_data and prev_data.get("report"):
+            previous_report = prev_data["report"]
+            previous_report_meta = prev_data.get("metadata")
+            logger.info(f"[Context] Loaded previous report ({len(previous_report)} chars) for trend comparison.")
 
     # 4. Analysis
     logger.info(f"[3/5] Analyzing news with You.com AI (language={language}, deep={deep_analysis})...")
@@ -72,6 +73,7 @@ def main():
             language=language,
             deep_analysis=deep_analysis,
             previous_report=previous_report,
+            previous_report_meta=previous_report_meta,
         )
         print("\n--- Analysis Report ---\n")
         print(analysis_report)

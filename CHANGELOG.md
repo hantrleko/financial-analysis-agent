@@ -4,6 +4,65 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [v1.5] - 2026-03-16
+
+### Added — 市场情绪分析 & 报纸版面 & 全站双语
+
+**🧭 市场情绪分析模块 (`src/sentiment.py`)**
+- 新增多因子情绪评分引擎，覆盖全球 **13 个板块、48 个资产**
+- 五因子评分模型：日涨跌 (30%) + 5 日动量 (25%) + 20 日趋势 (20%) + MA20 位置 (15%) + 量比 (10%)
+- VIX 反向指标特殊处理，高 VIX 额外压低整体情绪
+- 自动识别 💰 机会资产（score ≥ 0.2）和 ⚠️ 风险资产（score ≤ -0.2）
+- 覆盖市场：美股、A 股、港股、欧洲、日韩、新兴市场、能源、贵金属、农产品、加密货币、外汇、债券、波动率
+- Web UI 新增 🧭 Market Sentiment 标签页：总览指标卡、多空比例条、机会/风险双栏卡片、板块 Expander 数据表
+
+**📰 报纸版面模式**
+- 深度分析下可选「📰 Newspaper Layout / 报纸版面」复选框
+- 经典报纸排版：羊皮纸底色、衬线字体、报头 (masthead)、头条大标题、副标题自动提取、双栏 CSS 排版、引用框、双线分隔、页脚声明
+- Markdown → 报纸 HTML 解析器：支持标题层级、有序/无序列表、引用块、行内格式
+
+**🌐 全站中英双语 (i18n)**
+- 新建 I18N 翻译系统（~100 个 key），`t(key)` 函数自动切换语言
+- 语言选择器提升到侧边栏最顶部，切换即时生效
+- 所有 UI 文本双语化：侧边栏、4 个标签页、所有 spinner/提示/表头/按钮
+- `sentiment.py` 的 SIGNAL_LABEL / VIX_EMOJI 按语言分组
+
+**🎨 UI 美化**
+- 自定义 CSS：Metric 卡片深色渐变 + 圆角阴影、侧边栏暗色渐变背景、Tab 加粗字号、Expander 圆角边框
+- 情绪条绿/灰/红渐变 + 圆角阴影
+- 资产卡片暗色组件，悬停高亮，涨跌色标
+- Run Analysis 按钮 `primary` 类型突出 + `use_container_width` 全宽
+
+### Changed — 功能逻辑优化 (12 项)
+
+**📰 新闻采集 (`collector.py`)**
+- 标题去重改为 `SequenceMatcher` 模糊匹配 (阈值 0.65) + URL 联合去重
+- RSS 回退路径增加 `time_range` 时间过滤（`parsedate_to_datetime` 解析 RSS 日期）
+- 移除类内重复的 `AVAILABLE_SOURCES`，统一使用 config 定义
+
+**🧠 分析引擎 (`analyzer.py`)**
+- 市场快照根据 `time_range` 动态调整 yfinance period（24h→1d, week→5d, month→1mo）
+- 上期报告增加时间有效性校验（超过 72 小时不对比）
+- `_summarize_previous_report` 新增中文标题关键词匹配（市场哨兵、展望、关键驱动等）
+- 轻量模式也注入市场数据和历史报告（解耦深度分析）
+
+**📊 可视化 (`visualizer.py`)**
+- 同类资产归一化曲线合并到单张图上对比显示
+- 全部 `print()` 替换为 `logging`
+
+**🔊 音频 (`media_gen.py`)**
+- TTS 长文本自动按段落分段拼接（ElevenLabs 4800 字/块，Edge TTS 50000 字/块）
+- Edge TTS asyncio 改用 `loop.run_until_complete()` 避免多余循环
+
+**📜 历史 (`history.py`)**
+- 修复 `date_to` 当天记录被排除的边界 bug（时分秒自动补 23:59:59）
+- 新增 `cleanup()` 自动容量管理（最多 50 条 / 90 天），每次 save_run 后自动触发
+
+### Dependencies
+- 无新增依赖
+
+---
+
 ## [v1.4] - 2026-03-14
 
 ### Changed — You.com API 统一 & 全面优化

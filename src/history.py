@@ -4,6 +4,8 @@ import logging
 import shutil
 from datetime import datetime
 
+from src.config import HISTORY_MAX_RUNS, HISTORY_MAX_AGE_DAYS
+
 logger = logging.getLogger(__name__)
 
 
@@ -56,6 +58,7 @@ class HistoryManager:
             shutil.copy2(pdf_file, os.path.join(run_dir, "briefing.pdf"))
 
         logger.info("Run saved to %s", run_dir)
+        self.cleanup()
         return run_id
 
     def list_runs(self):
@@ -135,6 +138,8 @@ class HistoryManager:
             date_from = datetime.fromisoformat(date_from)
         if isinstance(date_to, str):
             date_to = datetime.fromisoformat(date_to)
+        if date_to and not date_to.hour and not date_to.minute and not date_to.second:
+            date_to = date_to.replace(hour=23, minute=59, second=59)
 
         results = []
         for meta in self.list_runs():
@@ -166,6 +171,38 @@ class HistoryManager:
                 results.append(meta)
 
         return results
+
+    def cleanup(self):
+        """自动清理超量和过期的历史记录。"""
+        runs = self.list_runs()  # 已按时间倒序
+
+        now = datetime.now()
+        deleted = 0
+
+        for i, run in enumerate(runs):
+            run_id = run.get("run_id", "")
+            should_delete = False
+
+            # 超过最大保留数
+            if i >= HISTORY_MAX_RUNS:
+                should_delete = True
+
+            # 超过最大保留天数
+            try:
+                ts = datetime.fromisoformat(run["timestamp"])
+                age_days = (now - ts).days
+                if age_days > HISTORY_MAX_AGE_DAYS:
+                    should_delete = True
+            except (KeyError, ValueError):
+                pass
+
+            if should_delete:
+                self.delete_run(run_id)
+                deleted += 1
+
+        if deleted:
+            logger.info("Cleaned up %d old history records.", deleted)
+        return deleted
 
     def get_run_count(self):
         """返回历史记录总数。"""

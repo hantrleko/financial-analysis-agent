@@ -2,7 +2,9 @@ import os
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from difflib import SequenceMatcher
+from email.utils import parsedate_to_datetime
 from dotenv import load_dotenv
 
 from src.config import (
@@ -12,6 +14,7 @@ from src.config import (
     SCRAPE_WORKERS,
     RSS_FEEDS,
     SOURCE_DOMAINS,
+    DEDUP_SIMILARITY_THRESHOLD,
 )
 
 load_dotenv()
@@ -22,12 +25,6 @@ YOU_API_KEY = os.getenv("YOU_API_KEY")
 
 
 class NewsCollector:
-    # 支持的新闻源列表
-    AVAILABLE_SOURCES = [
-        "Bloomberg", "Reuters", "AP News", "Yahoo Finance",
-        "CNBC", "Financial Times", "Wall Street Journal"
-    ]
-
     # time_range → Freshness 映射
     _FRESHNESS_MAP = {
         "24h": "DAY",
@@ -45,7 +42,7 @@ class NewsCollector:
         """
         if not self.api_key:
             logger.warning("YOU_API_KEY not found. Falling back to RSS.")
-            return self._fetch_rss(count)
+            return self._fetch_rss(count, time_range)
 
         try:
             from youdotcom import You
@@ -103,16 +100,20 @@ class NewsCollector:
                     })
 
             logger.info("Successfully fetched %d articles via You.com.", len(news_items))
-            return news_items if news_items else self._fetch_rss(count)
+            return news_items if news_items else self._fetch_rss(count, time_range)
 
         except Exception as e:
             logger.error("Error fetching from You.com: %s", e)
             logger.warning("Falling back to RSS feeds...")
-            return self._fetch_rss(count)
+            return self._fetch_rss(count, time_range)
 
-    def _fetch_rss(self, count=10):
-        """从多个 RSS 源聚合新闻，按时间排序后取 top N。"""
+    def _fetch_rss(self, count=10, time_range="24h"):
+        """从多个 RSS 源聚合新闻，按时间过滤、去重后取 top N。"""
         import feedparser
+
+        time_range_days = {"24h": 1, "week": 7, "month": 30}
+        max_age = timedelta(days=time_range_days.get(time_range, 1))
+        now = datetime.now(timezone.utc)
 
         all_items = []
         for feed_info in RSS_FEEDS:
@@ -120,12 +121,22 @@ class NewsCollector:
                 logger.info("Fetching RSS from: %s...", feed_info["source"])
                 feed = feedparser.parse(feed_info["url"])
                 for entry in feed.entries[:count]:
+                    # 时间过滤
+                    published_str = entry.get("published", "")
+                    if published_str:
+                        try:
+                            pub_dt = parsedate_to_datetime(published_str)
+                            if now - pub_dt > max_age:
+                                continue
+                        except Exception:
+                            pass  # 解析失败则保留
+
                     all_items.append({
                         "title": entry.get("title", "No Title"),
                         "url": entry.get("link", ""),
                         "description": entry.get("summary", entry.get("title", "")),
                         "source": feed_info["source"],
-                        "published_age": entry.get("published", "Unknown"),
+                        "published_age": published_str or "Unknown",
                         "fetched_at": datetime.now().isoformat(),
                     })
                 logger.info("  %s: %d articles", feed_info["source"], min(len(feed.entries), count))
@@ -136,14 +147,25 @@ class NewsCollector:
             logger.warning("All RSS feeds failed. Using mock data.")
             return self._get_mock_data()
 
-        # 去重（按 title）
-        seen_titles = set()
+        # 去重（URL + 标题模糊匹配）
+        seen_urls = set()
+        seen_titles = []
         unique_items = []
         for item in all_items:
-            title_key = item["title"].strip().lower()
-            if title_key not in seen_titles:
-                seen_titles.add(title_key)
-                unique_items.append(item)
+            url = item["url"]
+            if url and url in seen_urls:
+                continue
+            title = item["title"].strip().lower()
+            is_dup = any(
+                SequenceMatcher(None, title, t).ratio() >= DEDUP_SIMILARITY_THRESHOLD
+                for t in seen_titles
+            )
+            if is_dup:
+                continue
+            if url:
+                seen_urls.add(url)
+            seen_titles.append(title)
+            unique_items.append(item)
 
         result = unique_items[:count]
         logger.info("Successfully fetched %d unique articles from %d RSS sources.", len(result), len(RSS_FEEDS))
