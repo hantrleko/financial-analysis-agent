@@ -4,6 +4,27 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [v1.6] - 2026-03-16
+
+### Changed — 双引擎架构 & 全免费运行
+
+**🤖 双 LLM 引擎 (`src/analyzer.py`, `src/config.py`)**
+- 彻底移除 You.com Agent / Groq / DeepSeek 依赖，仅保留两个引擎：
+  - **智谱 GLM-4-Flash** — 免费，日常分析默认引擎
+  - **Gemini 2.0 Flash** — 免费，深度分析自动切换
+- 开启「🔬 深度分析」时自动升级为 Gemini；普通模式用 GLM-4-Flash
+- 侧边栏新增「🤖 LLM Engine」引擎选择器，支持手动切换
+- API Key 支持 `.env` 和 Streamlit Secrets 双渠道读取
+
+**📡 新闻采集简化 (`src/collector.py`)**
+- 移除 You.com Search，新闻采集统一走 RSS（完全免费）
+- 删除 `youdotcom` SDK 依赖，`requirements.txt` 瘦身
+
+**🔒 安全**
+- `.streamlit/secrets.toml` 加入 `.gitignore`，API Key 不会泄露到 GitHub
+
+---
+
 ## [v1.5] - 2026-03-16
 
 ### Added — 市场情绪分析 & 报纸版面 & 全站双语

@@ -13,99 +13,49 @@ from src.config import (
     SCRAPE_TIMEOUT,
     SCRAPE_WORKERS,
     RSS_FEEDS,
-    SOURCE_DOMAINS,
     DEDUP_SIMILARITY_THRESHOLD,
+    LLM_PROVIDERS,
 )
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-YOU_API_KEY = os.getenv("YOU_API_KEY")
+
+def _get_api_key(env_key):
+    """从环境变量或 Streamlit secrets 中获取 API Key。"""
+    val = os.getenv(env_key, "")
+    if val:
+        return val
+    try:
+        import streamlit as st
+        return st.secrets.get(env_key, "")
+    except Exception:
+        return ""
 
 
 class NewsCollector:
-    # time_range → Freshness 映射
-    _FRESHNESS_MAP = {
-        "24h": "DAY",
-        "week": "WEEK",
-        "month": "MONTH",
-    }
 
-    def __init__(self):
-        self.api_key = YOU_API_KEY
-
-    def fetch_news(self, query="financial markets trends", count=10, sources=None, time_range="24h"):
+    def fetch_news(self, query="financial markets trends", count=10, sources=None,
+                   time_range="24h", ai_search=False, **kwargs):
         """
-        使用 youdotcom SDK 获取新闻，失败则回退到 RSS。
-        支持通过 sources 指定新闻来源，通过 time_range 限定时间范围。
+        获取新闻。
+        ai_search=True: 先用 Gemini Search Grounding 联网搜索，再用 RSS 补充
+        ai_search=False: 纯 RSS（默认）
         """
-        if not self.api_key:
-            logger.warning("YOU_API_KEY not found. Falling back to RSS.")
-            return self._fetch_rss(count, time_range)
+        rss_items = self._fetch_rss(count, time_range)
 
-        try:
-            from youdotcom import You
-            from youdotcom.models import Freshness
+        if not ai_search:
+            return rss_items
 
-            # 构建带 site: 限定的查询
-            final_query = query
-            if sources:
-                site_parts = []
-                for src in sources:
-                    domain = SOURCE_DOMAINS.get(src)
-                    if domain:
-                        site_parts.append(f"site:{domain}")
-                if site_parts:
-                    final_query = f"{query} {' OR '.join(site_parts)}"
+        # AI 联网搜索 + RSS 合并去重
+        ai_items = self._fetch_gemini_search(query, count, time_range)
+        if not ai_items:
+            return rss_items
 
-            # 通过 Freshness 枚举设定时间范围
-            freshness_key = self._FRESHNESS_MAP.get(time_range)
-            freshness_value = getattr(Freshness, freshness_key, None) if freshness_key else None
-
-            logger.info("Fetching news via You.com SDK for: '%s' (freshness=%s)...", final_query, freshness_key)
-            with You(self.api_key) as you:
-                res = you.search.unified(query=final_query, freshness=freshness_value)
-
-            news_items = []
-
-            # 优先使用 news 结果
-            if res.results and res.results.news:
-                for item in res.results.news[:count]:
-                    news_items.append({
-                        "title": item.title,
-                        "url": item.url,
-                        "description": item.description or item.title,
-                        "source": "You.com (News)",
-                        "published_age": str(item.page_age) if item.page_age else "Recent",
-                        "thumbnail_url": item.thumbnail_url or "",
-                        "full_content": item.contents or "",
-                        "fetched_at": datetime.now().isoformat(),
-                    })
-
-            # 回退到 web 结果
-            if not news_items and res.results and res.results.web:
-                for item in res.results.web[:count]:
-                    snippet = ""
-                    if item.snippets:
-                        snippet = item.snippets[0]
-
-                    news_items.append({
-                        "title": item.title,
-                        "url": item.url,
-                        "description": snippet or item.title,
-                        "source": "You.com",
-                        "published_age": "Recent",
-                        "fetched_at": datetime.now().isoformat(),
-                    })
-
-            logger.info("Successfully fetched %d articles via You.com.", len(news_items))
-            return news_items if news_items else self._fetch_rss(count, time_range)
-
-        except Exception as e:
-            logger.error("Error fetching from You.com: %s", e)
-            logger.warning("Falling back to RSS feeds...")
-            return self._fetch_rss(count, time_range)
+        # AI 结果在前，RSS 补充在后，统一去重
+        merged = ai_items + rss_items
+        return self._dedup(merged, count)
 
     def _fetch_rss(self, count=10, time_range="24h"):
         """从多个 RSS 源聚合新闻，按时间过滤、去重后取 top N。"""
@@ -147,12 +97,18 @@ class NewsCollector:
             logger.warning("All RSS feeds failed. Using mock data.")
             return self._get_mock_data()
 
-        # 去重（URL + 标题模糊匹配）
+        result = self._dedup(all_items, count)
+        logger.info("Successfully fetched %d unique articles from %d RSS sources.", len(result), len(RSS_FEEDS))
+        return result
+
+    @staticmethod
+    def _dedup(items, count):
+        """去重（URL + 标题模糊匹配）。"""
         seen_urls = set()
         seen_titles = []
         unique_items = []
-        for item in all_items:
-            url = item["url"]
+        for item in items:
+            url = item.get("url", "")
             if url and url in seen_urls:
                 continue
             title = item["title"].strip().lower()
@@ -166,10 +122,88 @@ class NewsCollector:
                 seen_urls.add(url)
             seen_titles.append(title)
             unique_items.append(item)
+        return unique_items[:count]
 
-        result = unique_items[:count]
-        logger.info("Successfully fetched %d unique articles from %d RSS sources.", len(result), len(RSS_FEEDS))
-        return result
+    def _fetch_gemini_search(self, query, count, time_range):
+        """用 Gemini Search Grounding 联网搜索最新金融新闻。"""
+        import requests as http_requests
+
+        api_key = _get_api_key("GEMINI_API_KEY")
+        if not api_key:
+            logger.warning("GEMINI_API_KEY not set, skipping AI search.")
+            return []
+
+        cfg = LLM_PROVIDERS.get("gemini", {})
+        base_url = cfg.get("base_url", "https://generativelanguage.googleapis.com/v1beta")
+        model = cfg.get("model", "gemini-2.5-flash")
+        url = f"{base_url}/models/{model}:generateContent?key={api_key}"
+
+        time_desc = {"24h": "in the last 24 hours", "week": "this week", "month": "this month"}
+        prompt = (
+            f"Search for the latest {count} financial market news articles about: {query}\n"
+            f"Time range: {time_desc.get(time_range, 'recent')}\n\n"
+            f"For each article, output EXACTLY in this format (one article per block):\n"
+            f"TITLE: <article title>\n"
+            f"SOURCE: <news source name>\n"
+            f"SUMMARY: <1-2 sentence summary>\n"
+            f"---\n"
+            f"Output {count} articles. Be factual and cite real news."
+        )
+
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "tools": [{"google_search": {}}],
+            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048},
+        }
+
+        try:
+            logger.info("Fetching news via Gemini Search Grounding...")
+            resp = http_requests.post(url, json=payload, timeout=60)
+            resp.raise_for_status()
+            data = resp.json()
+
+            text = data["candidates"][0]["content"]["parts"][0].get("text", "")
+            grounding = data["candidates"][0].get("groundingMetadata", {})
+            chunks = grounding.get("groundingChunks", [])
+
+            # 解析结构化输出
+            news_items = []
+            blocks = text.split("---")
+            for block in blocks:
+                block = block.strip()
+                if not block:
+                    continue
+                title = source = summary = ""
+                for line in block.split("\n"):
+                    line = line.strip()
+                    if line.startswith("TITLE:"):
+                        title = line[6:].strip()
+                    elif line.startswith("SOURCE:"):
+                        source = line[7:].strip()
+                    elif line.startswith("SUMMARY:"):
+                        summary = line[8:].strip()
+                if title:
+                    news_items.append({
+                        "title": title,
+                        "url": "",
+                        "description": summary or title,
+                        "source": f"🔍 {source}" if source else "🔍 Gemini Search",
+                        "published_age": "Recent",
+                        "fetched_at": datetime.now().isoformat(),
+                    })
+
+            # 用 grounding chunks 的 URL 补充
+            for i, chunk in enumerate(chunks):
+                web = chunk.get("web", {})
+                if i < len(news_items) and web.get("uri"):
+                    news_items[i]["url"] = web["uri"]
+
+            logger.info("Gemini Search returned %d articles with %d grounding sources.", len(news_items), len(chunks))
+            return news_items[:count]
+
+        except Exception as e:
+            logger.warning("Gemini Search failed: %s", e)
+            return []
 
     def _get_mock_data(self):
         """兜底 mock 数据，用于测试流程。"""

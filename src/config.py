@@ -3,7 +3,7 @@
 所有可调参数统一在此维护，各模块通过 from src.config import ... 引用。
 """
 
-VERSION = "v1.5"
+VERSION = "v1.6"
 
 # ──────────────────── 抓取参数 ────────────────────
 MAX_SCRAPE_CHARS = 4000       # 每篇文章最大抓取字符数
@@ -31,8 +31,9 @@ RSS_FEEDS = [
     {"url": "https://finance.yahoo.com/news/rssindex", "source": "Yahoo Finance"},
     {"url": "https://news.google.com/rss/topics/CAAqJggKIiBDQkFTRWdvSUwyMHZNRGx6TVdZU0FtVnVHZ0pWVXlnQVAB?hl=en-US&gl=US&ceid=US:en", "source": "Google News (Business)"},
     {"url": "https://www.cnbc.com/id/100003114/device/rss/rss.html", "source": "CNBC"},
-    {"url": "https://feeds.reuters.com/reuters/businessNews", "source": "Reuters"},
     {"url": "https://feeds.bloomberg.com/markets/news.rss", "source": "Bloomberg"},
+    {"url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147", "source": "CNBC (Markets)"},
+    {"url": "https://feeds.marketwatch.com/marketwatch/topstories", "source": "MarketWatch"},
 ]
 
 # ──────────────────── 报告板块 ────────────────────
@@ -63,6 +64,11 @@ SNAPSHOT_TICKERS = {
 # ──────────────────── 上期报告注入 ────────────────────
 PREVIOUS_REPORT_MAX_CHARS = 2000   # 注入上期报告的最大字符数
 PREVIOUS_REPORT_MAX_AGE_HOURS = 72  # 上期报告最大有效时间（小时），超过则不对比
+
+# ──────────────────── 新闻模式 ────────────────────
+NEWS_MODE_RSS = "rss"              # 纯 RSS（免费）
+NEWS_MODE_YOU = "you_search"       # You.com Search（付费）
+DEFAULT_NEWS_MODE = NEWS_MODE_RSS  # 默认使用免费 RSS
 
 # ──────────────────── 新闻去重 ────────────────────
 DEDUP_SIMILARITY_THRESHOLD = 0.65  # 标题相似度阈值，超过则视为重复
@@ -183,3 +189,22 @@ VIX_LEVELS = {
     "high": 30,      # 25-30: 恐惧
     # > 30: 极度恐惧
 }
+
+# ──────────────────── LLM 后端配置 ────────────────────
+LLM_PROVIDERS = {
+    "zhipu": {
+        "name": "GLM-4-Flash ✨ 免费",
+        "env_key": "ZHIPU_API_KEY",
+        "base_url": "https://open.bigmodel.cn/api/paas/v4",
+        "model": "glm-4-flash",
+    },
+    "gemini": {
+        "name": "Gemini 2.5 Flash 🧠 深度",
+        "env_key": "GEMINI_API_KEY",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta",
+        "model": "gemini-2.5-flash",
+    },
+}
+
+DEFAULT_LLM_PROVIDER = "zhipu"
+DEEP_LLM_PROVIDER = "gemini"

@@ -5,33 +5,43 @@ from datetime import datetime, timezone
 
 import yfinance as yf
 from dotenv import load_dotenv
-from youdotcom import You
-from youdotcom.models import (
-    ExpressAgentRunsRequest,
-    AdvancedAgentRunsRequest,
-    ResearchTool,
-    SearchEffort,
-    ReportVerbosity,
-)
 
 from src.config import (
     REPORT_SECTORS, SNAPSHOT_TICKERS, PREVIOUS_REPORT_MAX_CHARS,
     TIME_RANGE_PERIOD_MAP, PREVIOUS_REPORT_MAX_AGE_HOURS,
+    LLM_PROVIDERS, DEFAULT_LLM_PROVIDER, DEEP_LLM_PROVIDER,
 )
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-YOU_API_KEY = os.getenv("YOU_API_KEY")
+
+def _get_api_key(env_key):
+    """从环境变量或 Streamlit secrets 中获取 API Key。"""
+    val = os.getenv(env_key, "")
+    if val:
+        return val
+    try:
+        import streamlit as st
+        return st.secrets.get(env_key, "")
+    except Exception:
+        return ""
 
 
 class FinancialAnalyzer:
-    def __init__(self):
-        if not YOU_API_KEY:
-            raise ValueError("YOU_API_KEY not found in .env")
+    def __init__(self, provider=None):
+        self.provider = provider or DEFAULT_LLM_PROVIDER
+        self._validate_provider()
 
-        self.client = You(YOU_API_KEY)
+    def _validate_provider(self):
+        """校验所选 provider 是否有可用的 API Key。"""
+        cfg = LLM_PROVIDERS.get(self.provider)
+        if not cfg:
+            raise ValueError(f"Unknown LLM provider: {self.provider}")
+        api_key = _get_api_key(cfg["env_key"])
+        if not api_key:
+            logger.warning("API key %s not set for provider %s", cfg["env_key"], self.provider)
 
     # ──────────────────── 辅助方法 ────────────────────
 
@@ -172,7 +182,7 @@ Keep it professional, data-driven, yet engaging."""
 
     def _build_input(self, news_context, briefing_length, language, sectors,
                      market_snapshot=None, previous_report=None):
-        """构建传入 You.com Agent 的 input 文本。"""
+        """构建传入 LLM 的 input 文本。"""
         structure = self._briefing_structure(briefing_length)
         lang = self._lang_instruction(language)
         sec = self._sector_instruction(sectors)
@@ -202,65 +212,84 @@ Keep it professional, data-driven, yet engaging."""
 
         return "\n".join(parts)
 
-    # ──────────────── 提取报告文本 ────────────────
+    # ──────────────── LLM 后端调用 ────────────────
 
-    @staticmethod
-    def _extract_report(response):
-        """从 Agent 响应中提取报告文本。"""
-        if not response or not response.output:
-            return "No response from AI agent."
+    def _call_llm(self, input_text, deep_analysis=False):
+        """
+        路由 LLM 调用。
+        普通模式 → 当前 provider（默认智谱 GLM-4-Flash）
+        深度模式 → 自动升级为 Gemini
+        """
+        provider = DEEP_LLM_PROVIDER if deep_analysis else self.provider
 
-        for item in response.output:
-            if hasattr(item, 'text') and item.text:
-                return item.text
+        if provider == "gemini":
+            return self._call_gemini(input_text)
+        else:
+            return self._call_openai_compat(input_text, provider)
 
-        return "No report content in response."
+    def _call_gemini(self, input_text):
+        """调用 Google Gemini API。"""
+        import requests as http_requests
+        api_key = _get_api_key("GEMINI_API_KEY")
+        cfg = LLM_PROVIDERS["gemini"]
+        url = f"{cfg['base_url']}/models/{cfg['model']}:generateContent?key={api_key}"
+        payload = {
+            "contents": [{"parts": [{"text": input_text}]}],
+            "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 4096,
+            },
+        }
+        resp = http_requests.post(url, json=payload, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+        try:
+            return data["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError):
+            return "No response from Gemini."
+
+    def _call_openai_compat(self, input_text, provider_key):
+        """调用 OpenAI 兼容接口（智谱 GLM 等）。"""
+        import requests as http_requests
+        cfg = LLM_PROVIDERS[provider_key]
+        api_key = _get_api_key(cfg["env_key"])
+        url = f"{cfg['base_url']}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": cfg["model"],
+            "messages": [
+                {"role": "system", "content": "You are an expert Wall Street Financial Analyst with 20 years of experience."},
+                {"role": "user", "content": input_text},
+            ],
+            "temperature": 0.7,
+            "max_tokens": 4096,
+        }
+        resp = http_requests.post(url, json=payload, headers=headers, timeout=120)
+        resp.raise_for_status()
+        data = resp.json()
+        try:
+            return data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError):
+            return f"No response from {cfg['name']}."
 
     # ──────────────── 公共 API ────────────────
 
     def analyze_news(self, news_items, briefing_length="medium", language="en",
                      sectors=None, previous_report=None, deep_analysis=False,
                      time_range="week", previous_report_meta=None):
-        """
-        分析新闻并生成简报。
-        deep_analysis=True 时使用 Advanced Agent + ResearchTool 进行深度分析。
-        """
+        """分析新闻并生成简报。"""
         if not news_items:
             return "No news to analyze."
 
-        # 校验上期报告有效性
         if previous_report_meta and not self._is_previous_report_valid(previous_report_meta):
             logger.info("Previous report is too old or metadata invalid, skipping comparison.")
             previous_report = None
 
         news_context = self._build_news_context(news_items)
-
-        if not deep_analysis:
-            # 轻量模式：Express Agent（快速）+ 市场数据
-            snapshot = self.fetch_market_snapshot(time_range=time_range)
-            input_text = self._build_input(
-                news_context=news_context,
-                briefing_length=briefing_length,
-                language=language,
-                sectors=sectors,
-                market_snapshot=snapshot,
-                previous_report=previous_report,
-            )
-            try:
-                response = self.client.agents.runs.create(
-                    request=ExpressAgentRunsRequest(input=input_text),
-                )
-                return self._extract_report(response)
-            except Exception as e:
-                return f"Analysis failed: {e}"
-
-        # ── 深度分析模式：Advanced Agent + ResearchTool ──
-        logger.info("Analyzing %d articles (deep analysis)...", len(news_items))
-
-        # 拉取实时市场数据
-        logger.info("Fetching real-time market snapshot...")
         snapshot = self.fetch_market_snapshot(time_range=time_range)
-
         input_text = self._build_input(
             news_context=news_context,
             briefing_length=briefing_length,
@@ -270,70 +299,31 @@ Keep it professional, data-driven, yet engaging."""
             previous_report=previous_report,
         )
 
-        logger.info("Synthesizing report with Advanced Agent + Research...")
         try:
-            response = self.client.agents.runs.create(
-                request=AdvancedAgentRunsRequest(
-                    input=input_text,
-                    tools=[
-                        ResearchTool(
-                            search_effort=SearchEffort.HIGH,
-                            report_verbosity=ReportVerbosity.HIGH,
-                        ),
-                    ],
-                ),
-            )
-            return self._extract_report(response)
+            return self._call_llm(input_text, deep_analysis=deep_analysis)
         except Exception as e:
             return f"Analysis failed: {e}"
 
     def analyze_news_stream(self, news_items, briefing_length="medium", language="en",
                             sectors=None, previous_report=None, deep_analysis=False,
                             on_status=None, time_range="week", previous_report_meta=None):
-        """
-        分析新闻并生成简报（yield 方式）。
-        You.com Agent API 不支持逐 token 流式，一次性返回完整结果。
-        """
+        """分析新闻并生成简报（yield 方式）。"""
         if not news_items:
             yield "No news to analyze."
             return
 
-        # 校验上期报告有效性
         if previous_report_meta and not self._is_previous_report_valid(previous_report_meta):
             logger.info("Previous report is too old or metadata invalid, skipping comparison.")
             previous_report = None
 
         news_context = self._build_news_context(news_items)
 
-        if not deep_analysis:
-            # 轻量模式 + 市场数据
-            if on_status:
-                on_status("🔍 Analyzing with Express Agent...")
-            snapshot = self.fetch_market_snapshot(time_range=time_range)
-            input_text = self._build_input(
-                news_context=news_context,
-                briefing_length=briefing_length,
-                language=language,
-                sectors=sectors,
-                market_snapshot=snapshot,
-                previous_report=previous_report,
-            )
-            try:
-                response = self.client.agents.runs.create(
-                    request=ExpressAgentRunsRequest(input=input_text),
-                )
-                yield self._extract_report(response)
-            except Exception as e:
-                yield f"Analysis failed: {e}"
-            return
-
-        # ── 深度分析模式 ──
-
-        # 市场数据
         if on_status:
-            on_status("📊 Fetching real-time market data...")
-        snapshot = self.fetch_market_snapshot(time_range=time_range)
+            provider_key = DEEP_LLM_PROVIDER if deep_analysis else self.provider
+            provider_name = LLM_PROVIDERS.get(provider_key, {}).get("name", provider_key)
+            on_status(f"📊 Analyzing with {provider_name}...")
 
+        snapshot = self.fetch_market_snapshot(time_range=time_range)
         input_text = self._build_input(
             news_context=news_context,
             briefing_length=briefing_length,
@@ -343,22 +333,9 @@ Keep it professional, data-driven, yet engaging."""
             previous_report=previous_report,
         )
 
-        # Advanced Agent + Research
-        if on_status:
-            on_status("🔬 Deep analysis in progress (Advanced Agent + Research)...")
         try:
-            response = self.client.agents.runs.create(
-                request=AdvancedAgentRunsRequest(
-                    input=input_text,
-                    tools=[
-                        ResearchTool(
-                            search_effort=SearchEffort.HIGH,
-                            report_verbosity=ReportVerbosity.HIGH,
-                        ),
-                    ],
-                ),
-            )
-            yield self._extract_report(response)
+            result = self._call_llm(input_text, deep_analysis=deep_analysis)
+            yield result
         except Exception as e:
             yield f"Analysis failed: {e}"
 
@@ -379,9 +356,5 @@ if __name__ == "__main__":
         {"title": "Fed Rates Hold Steady", "source": "Reuters",
          "description": "Powell signals no cuts yet.", "published_age": "2h"}
     ]
-    # 测试轻量模式
-    logger.info("=== Light Mode ===")
+    logger.info("=== Using provider: %s ===", analyzer.provider)
     logger.info(analyzer.analyze_news(mock_news))
-    # 测试深度模式
-    logger.info("=== Deep Mode ===")
-    logger.info(analyzer.analyze_news(mock_news, deep_analysis=True))

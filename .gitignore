@@ -1,5 +1,6 @@
 # API Keys — 绝对不能上传
 .env
+.streamlit/secrets.toml
 
 # 运行产物
 data/
