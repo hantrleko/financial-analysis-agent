@@ -14,13 +14,23 @@ class HistoryManager:
         self.history_dir = history_dir
         os.makedirs(history_dir, exist_ok=True)
 
+    def _generate_run_id(self):
+        """生成唯一 run_id，优先使用微秒时间戳，并处理极端并发冲突。"""
+        base = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        run_id = base
+        suffix = 1
+        while os.path.exists(os.path.join(self.history_dir, run_id)):
+            run_id = f"{base}_{suffix}"
+            suffix += 1
+        return run_id
+
     def save_run(self, news_items, report, query="", sources=None, time_range="",
                  briefing_length="", audio_file=None, pdf_file=None):
         """
         保存一次运行的所有结果到带时间戳的目录。
         返回 run_id（时间戳字符串）。
         """
-        run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_id = self._generate_run_id()
         run_dir = os.path.join(self.history_dir, run_id)
         os.makedirs(run_dir, exist_ok=True)
 

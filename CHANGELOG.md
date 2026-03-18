@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [v1.7] - 2026-03-18
+
+### Fixed
+- **📰 新闻来源筛选真正生效 (`src/collector.py`)**
+  - 修复侧边栏 `News Sources` 选择不影响采集结果的问题
+  - RSS 聚合新增来源过滤逻辑，支持匹配扩展源名（如 `CNBC (Markets)` 归属 `CNBC`）
+
+- **📜 历史记录 ID 冲突修复 (`src/history.py`)**
+  - `run_id` 从秒级升级为微秒级时间戳
+  - 新增目录冲突兜底后缀，避免同秒并发触发时覆盖历史结果
+
+- **🔐 报纸版面渲染安全加固 (`app.py`)**
+  - 报纸模式内联 Markdown 渲染前统一做 HTML 转义
+  - 保留 Markdown 强调样式的同时，防止动态文本注入 HTML
+
+### Added
+- **✅ 核心回归测试 (`tests/`)**
+  - 新增 `collector` 来源过滤测试
+  - 新增 `history` 唯一 run_id 测试与保存加载回归测试
+  - 新增报纸渲染内联格式安全转义测试
+
+---
+
 ## [v1.6] - 2026-03-16
 
 ### Changed — 双引擎架构 & 全免费运行

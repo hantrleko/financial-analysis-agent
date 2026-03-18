@@ -21,6 +21,7 @@ from src.media_gen import MediaGenerator, VOICE_PRESETS, EDGE_VOICE_PRESETS, TTS
 from src.history import HistoryManager
 from src.visualizer import ASSET_GROUPS, create_asset_dashboard
 from src.sentiment import MarketSentimentAnalyzer, SIGNAL_EMOJI, SIGNAL_LABEL, VIX_EMOJI
+from src.newspaper import inline_markdown
 
 # 基础路径
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -88,8 +89,8 @@ I18N = {
     "llm_engine": {"en": "🤖 LLM Engine", "zh": "🤖 LLM 引擎"},
     "llm_provider": {"en": "Analysis Engine", "zh": "分析引擎"},
     "llm_provider_help": {
-        "en": "GLM-4-Flash (free, fast) for daily use; Gemini Flash for deep analysis — auto-switches when Deep Analysis is enabled",
-        "zh": "GLM-4-Flash（免费快速）日常使用；开启深度分析时自动切换 Gemini Flash",
+        "en": "Gemini 2.5 Flash (default) — fast, high quality, free tier available",
+        "zh": "Gemini 2.5 Flash（默认）— 快速、高质量、免费额度可用",
     },
     "run_analysis": {"en": "🚀 Run Analysis", "zh": "🚀 开始分析"},
     "update_log": {"en": "📋 Update Log", "zh": "📋 更新日志"},
@@ -830,13 +831,7 @@ def _md_to_html_body(text):
 
 def _inline_md(text):
     """处理行内 Markdown 格式。"""
-    text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', text)
-    text = re.sub(r'\*(.+?)\*', r'<i>\1</i>', text)
-    text = re.sub(r'__(.+?)__', r'<b>\1</b>', text)
-    text = re.sub(r'_(.+?)_', r'<i>\1</i>', text)
-    text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
-    text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
-    return text
+    return inline_markdown(text)
 
 
 def _strip_emoji(text):

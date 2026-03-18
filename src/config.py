@@ -3,7 +3,7 @@
 所有可调参数统一在此维护，各模块通过 from src.config import ... 引用。
 """
 
-VERSION = "v1.6"
+VERSION = "v1.7"
 
 # ──────────────────── 抓取参数 ────────────────────
 MAX_SCRAPE_CHARS = 4000       # 每篇文章最大抓取字符数
@@ -34,7 +34,15 @@ RSS_FEEDS = [
     {"url": "https://feeds.bloomberg.com/markets/news.rss", "source": "Bloomberg"},
     {"url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=10001147", "source": "CNBC (Markets)"},
     {"url": "https://feeds.marketwatch.com/marketwatch/topstories", "source": "MarketWatch"},
+    {"url": "https://feeds.bbci.co.uk/news/business/rss.xml", "source": "BBC Business"},
+    {"url": "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml", "source": "NYT Business"},
+    {"url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258", "source": "CNBC (Economy)"},
+    {"url": "https://feeds.marketwatch.com/marketwatch/marketpulse", "source": "MarketWatch (Pulse)"},
 ]
+
+# Google News 动态搜索 RSS（按 query 实时构造）
+GOOGLE_NEWS_RSS_TEMPLATE = "https://news.google.com/rss/search?q={query}+when:{time_range}&hl=en-US&gl=US&ceid=US:en"
+GOOGLE_NEWS_TIME_MAP = {"24h": "1d", "week": "7d", "month": "30d"}
 
 # ──────────────────── 报告板块 ────────────────────
 REPORT_SECTORS = {
@@ -72,6 +80,12 @@ DEFAULT_NEWS_MODE = NEWS_MODE_RSS  # 默认使用免费 RSS
 
 # ──────────────────── 新闻去重 ────────────────────
 DEDUP_SIMILARITY_THRESHOLD = 0.65  # 标题相似度阈值，超过则视为重复
+
+# 付费墙域名（跳过全文抓取，仅使用摘要）
+PAYWALL_DOMAINS = [
+    "bloomberg.com", "ft.com", "wsj.com", "economist.com",
+    "barrons.com", "nytimes.com", "washingtonpost.com",
+]
 
 # ──────────────────── 市场快照 time_range 映射 ────────────────────
 TIME_RANGE_PERIOD_MAP = {
@@ -190,6 +204,10 @@ VIX_LEVELS = {
     # > 30: 极度恐惧
 }
 
+# ──────────────────── API 代理（中国大陆用户必填） ────────────────────
+# 在 .env 中设置: GEMINI_PROXY=http://127.0.0.1:7890 （替换为你的代理地址）
+# 支持 HTTP/SOCKS5 代理，用于访问 Google Gemini API
+
 # ──────────────────── LLM 后端配置 ────────────────────
 LLM_PROVIDERS = {
     "zhipu": {
@@ -199,12 +217,12 @@ LLM_PROVIDERS = {
         "model": "glm-4-flash",
     },
     "gemini": {
-        "name": "Gemini 2.5 Flash 🧠 深度",
+        "name": "Gemini 2.5 Flash 🧠",
         "env_key": "GEMINI_API_KEY",
         "base_url": "https://generativelanguage.googleapis.com/v1beta",
         "model": "gemini-2.5-flash",
     },
 }
 
-DEFAULT_LLM_PROVIDER = "zhipu"
+DEFAULT_LLM_PROVIDER = "gemini"
 DEEP_LLM_PROVIDER = "gemini"

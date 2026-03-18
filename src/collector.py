@@ -15,6 +15,9 @@ from src.config import (
     RSS_FEEDS,
     DEDUP_SIMILARITY_THRESHOLD,
     LLM_PROVIDERS,
+    GOOGLE_NEWS_RSS_TEMPLATE,
+    GOOGLE_NEWS_TIME_MAP,
+    PAYWALL_DOMAINS,
 )
 
 load_dotenv()
@@ -34,6 +37,22 @@ def _get_api_key(env_key):
         return ""
 
 
+def _get_proxy():
+    """获取 Gemini API 代理地址。"""
+    proxy = os.getenv("GEMINI_PROXY", "")
+    if not proxy:
+        try:
+            import streamlit as st
+            proxy = st.secrets.get("GEMINI_PROXY", "")
+        except Exception:
+            pass
+    if proxy:
+        logger.info("Using Gemini proxy: %s", proxy)
+        return {"https": proxy, "http": proxy}
+    logger.warning("GEMINI_PROXY not set — Gemini API calls will go direct (may fail in China)")
+    return None
+
+
 class NewsCollector:
 
     def fetch_news(self, query="financial markets trends", count=10, sources=None,
@@ -41,57 +60,84 @@ class NewsCollector:
         """
         获取新闻。
         ai_search=True: 先用 Gemini Search Grounding 联网搜索，再用 RSS 补充
-        ai_search=False: 纯 RSS（默认）
+        ai_search=False: 纯 RSS + Google News 动态搜索（默认）
         """
-        rss_items = self._fetch_rss(count, time_range)
+        rss_items = self._fetch_rss(count=count, time_range=time_range, sources=sources)
+        google_items = self._fetch_google_news_rss(query, count, time_range)
+        base_items = self._dedup(google_items + rss_items, count)
 
         if not ai_search:
-            return rss_items
+            return base_items
 
         # AI 联网搜索 + RSS 合并去重
         ai_items = self._fetch_gemini_search(query, count, time_range)
         if not ai_items:
-            return rss_items
+            return base_items
 
-        # AI 结果在前，RSS 补充在后，统一去重
-        merged = ai_items + rss_items
+        # AI 结果在前，base 补充在后，统一去重
+        merged = ai_items + base_items
         return self._dedup(merged, count)
 
-    def _fetch_rss(self, count=10, time_range="24h"):
+    @staticmethod
+    def _source_matches(feed_source, selected_sources):
+        """判断 feed source 是否匹配用户选择来源（支持 CNBC (Markets) 这类扩展名）。"""
+        if not selected_sources:
+            return True
+
+        source_lower = feed_source.strip().lower()
+        for src in selected_sources:
+            src_lower = src.strip().lower()
+            if source_lower == src_lower or source_lower.startswith(f"{src_lower} ("):
+                return True
+        return False
+
+    def _fetch_rss(self, count=10, time_range="24h", sources=None):
         """从多个 RSS 源聚合新闻，按时间过滤、去重后取 top N。"""
         import feedparser
 
         time_range_days = {"24h": 1, "week": 7, "month": 30}
         max_age = timedelta(days=time_range_days.get(time_range, 1))
         now = datetime.now(timezone.utc)
+        selected_sources = set(sources or [])
 
         all_items = []
         for feed_info in RSS_FEEDS:
-            try:
-                logger.info("Fetching RSS from: %s...", feed_info["source"])
-                feed = feedparser.parse(feed_info["url"])
-                for entry in feed.entries[:count]:
-                    # 时间过滤
-                    published_str = entry.get("published", "")
-                    if published_str:
-                        try:
-                            pub_dt = parsedate_to_datetime(published_str)
-                            if now - pub_dt > max_age:
-                                continue
-                        except Exception:
-                            pass  # 解析失败则保留
-
-                    all_items.append({
-                        "title": entry.get("title", "No Title"),
-                        "url": entry.get("link", ""),
-                        "description": entry.get("summary", entry.get("title", "")),
-                        "source": feed_info["source"],
-                        "published_age": published_str or "Unknown",
-                        "fetched_at": datetime.now().isoformat(),
+            if not self._source_matches(feed_info["source"], selected_sources):
+                logger.debug("Skipping RSS source by filter: %s", feed_info["source"])
+                continue
+            for attempt in range(2):
+                try:
+                    logger.info("Fetching RSS from: %s (attempt %d)...", feed_info["source"], attempt + 1)
+                    feed = feedparser.parse(feed_info["url"], request_headers={
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
                     })
-                logger.info("  %s: %d articles", feed_info["source"], min(len(feed.entries), count))
-            except Exception as e:
-                logger.warning("  %s failed: %s", feed_info["source"], e)
+                    if feed.bozo and not feed.entries:
+                        raise Exception(f"Feed parse error: {feed.bozo_exception}")
+                    for entry in feed.entries[:count]:
+                        # 时间过滤
+                        published_str = entry.get("published", "")
+                        if published_str:
+                            try:
+                                pub_dt = parsedate_to_datetime(published_str)
+                                if now - pub_dt > max_age:
+                                    continue
+                            except Exception:
+                                pass  # 解析失败则保留
+
+                        all_items.append({
+                            "title": entry.get("title", "No Title"),
+                            "url": entry.get("link", ""),
+                            "description": entry.get("summary", entry.get("title", "")),
+                            "source": feed_info["source"],
+                            "published_age": published_str or "Unknown",
+                            "fetched_at": datetime.now().isoformat(),
+                        })
+                    logger.info("  %s: %d articles", feed_info["source"], min(len(feed.entries), count))
+                    break  # success, no retry
+                except Exception as e:
+                    logger.warning("  %s attempt %d failed: %s", feed_info["source"], attempt + 1, e)
+                    if attempt == 1:
+                        logger.warning("  %s: all attempts failed, skipping.", feed_info["source"])
 
         if not all_items:
             logger.warning("All RSS feeds failed. Using mock data.")
@@ -100,6 +146,40 @@ class NewsCollector:
         result = self._dedup(all_items, count)
         logger.info("Successfully fetched %d unique articles from %d RSS sources.", len(result), len(RSS_FEEDS))
         return result
+
+    def _fetch_google_news_rss(self, query, count=10, time_range="24h"):
+        """通过 Google News RSS 按 query 动态搜索新闻。中文 query 自动附加英文关键词。"""
+        import feedparser
+        from urllib.parse import quote_plus
+        import re
+
+        # 如果 query 包含中文，附加英文金融关键词以提升 Google News 命中率
+        has_chinese = bool(re.search(r'[\u4e00-\u9fff]', query))
+        search_query = f"{query} financial markets news" if has_chinese else query
+
+        gn_time = GOOGLE_NEWS_TIME_MAP.get(time_range, "1d")
+        url = GOOGLE_NEWS_RSS_TEMPLATE.format(query=quote_plus(search_query), time_range=gn_time)
+        logger.info("Fetching Google News RSS for query: %s", search_query)
+
+        try:
+            feed = feedparser.parse(url, request_headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            })
+            items = []
+            for entry in feed.entries[:count]:
+                items.append({
+                    "title": entry.get("title", "No Title"),
+                    "url": entry.get("link", ""),
+                    "description": entry.get("summary", entry.get("title", "")),
+                    "source": "Google News",
+                    "published_age": entry.get("published", "Unknown"),
+                    "fetched_at": datetime.now().isoformat(),
+                })
+            logger.info("Google News RSS returned %d articles.", len(items))
+            return items
+        except Exception as e:
+            logger.warning("Google News RSS failed: %s", e)
+            return []
 
     @staticmethod
     def _dedup(items, count):
@@ -153,12 +233,21 @@ class NewsCollector:
         payload = {
             "contents": [{"parts": [{"text": prompt}]}],
             "tools": [{"google_search": {}}],
-            "generationConfig": {"temperature": 0.3, "maxOutputTokens": 2048},
+            "generationConfig": {
+                "temperature": 0.2,
+                "maxOutputTokens": 4096,
+                "thinkingConfig": {
+                    "thinkingBudget": 0,
+                },
+            },
         }
 
         try:
             logger.info("Fetching news via Gemini Search Grounding...")
-            resp = http_requests.post(url, json=payload, timeout=60)
+            proxies = _get_proxy()
+            resp = http_requests.post(url, json=payload, timeout=60, proxies=proxies)
+            if resp.status_code != 200:
+                logger.error("Gemini Search API error %d: %s", resp.status_code, resp.text[:500])
             resp.raise_for_status()
             data = resp.json()
 
@@ -166,7 +255,7 @@ class NewsCollector:
             grounding = data["candidates"][0].get("groundingMetadata", {})
             chunks = grounding.get("groundingChunks", [])
 
-            # 解析结构化输出
+            # 解析结构化文本输出
             news_items = []
             blocks = text.split("---")
             for block in blocks:
@@ -176,11 +265,11 @@ class NewsCollector:
                 title = source = summary = ""
                 for line in block.split("\n"):
                     line = line.strip()
-                    if line.startswith("TITLE:"):
+                    if line.upper().startswith("TITLE:"):
                         title = line[6:].strip()
-                    elif line.startswith("SOURCE:"):
+                    elif line.upper().startswith("SOURCE:"):
                         source = line[7:].strip()
-                    elif line.startswith("SUMMARY:"):
+                    elif line.upper().startswith("SUMMARY:"):
                         summary = line[8:].strip()
                 if title:
                     news_items.append({
@@ -228,7 +317,15 @@ class NewsCollector:
         ]
 
     def scrape_content(self, url, timeout=SCRAPE_TIMEOUT):
-        """使用 trafilatura 提取文章正文，失败则回退到 BeautifulSoup。"""
+        """使用 trafilatura 提取文章正文，失败则回退到 BeautifulSoup。跳过付费墙站点。"""
+        from urllib.parse import urlparse
+
+        # 付费墙域名跳过
+        domain = urlparse(url).netloc.lower()
+        if any(pw in domain for pw in PAYWALL_DOMAINS):
+            logger.info("Skipping paywall site: %s", domain)
+            return ""
+
         # trafilatura 提取
         try:
             import trafilatura

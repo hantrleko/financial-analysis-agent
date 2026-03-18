@@ -29,6 +29,22 @@ def _get_api_key(env_key):
         return ""
 
 
+def _get_proxy():
+    """获取 Gemini API 代理地址。"""
+    proxy = os.getenv("GEMINI_PROXY", "")
+    if not proxy:
+        try:
+            import streamlit as st
+            proxy = st.secrets.get("GEMINI_PROXY", "")
+        except Exception:
+            pass
+    if proxy:
+        logger.info("Using Gemini proxy: %s", proxy)
+        return {"https": proxy, "http": proxy}
+    logger.warning("GEMINI_PROXY not set — Gemini API calls will go direct (may fail in China)")
+    return None
+
+
 class FinancialAnalyzer:
     def __init__(self, provider=None):
         self.provider = provider or DEFAULT_LLM_PROVIDER
@@ -188,7 +204,7 @@ Keep it professional, data-driven, yet engaging."""
         sec = self._sector_instruction(sectors)
 
         parts = [
-            "You are an expert Wall Street Financial Analyst with 20 years of experience.",
+            "You are an expert Wall Street Financial Analyst and Chief Investment Strategist with 20 years of experience at a top-tier investment bank. You produce institutional-grade research briefings known for their precision, depth, and actionable insights.",
             f"\n## Collected News Articles\n{news_context}",
         ]
 
@@ -202,12 +218,14 @@ Keep it professional, data-driven, yet engaging."""
         parts.append(f"\n## Your Task\nBased on ALL the above intelligence and data, {structure}")
 
         parts.append("\n## Critical Requirements")
-        parts.append("- Reference SPECIFIC data points and numbers from the provided news articles")
-        parts.append("- Cross-reference news narratives with actual market data — note any contradictions")
+        parts.append("- Reference SPECIFIC data points, numbers, and percentages from the provided news articles")
+        parts.append("- Cross-reference news narratives with actual market data — explicitly note any contradictions or confirmations")
+        parts.append("- Identify cause-and-effect chains: what is driving what, and what are the second-order effects")
         if previous_report:
             parts.append("- Compare with the previous report: highlight what has changed, what trends are continuing, and any reversals")
-        parts.append("- Provide concrete price levels, percentages, and metrics wherever possible")
-        parts.append("- Distinguish between confirmed facts and market speculation")
+        parts.append("- Provide concrete price levels, support/resistance levels, percentages, and metrics wherever possible")
+        parts.append("- Distinguish between confirmed facts and market speculation — label speculation clearly")
+        parts.append("- Prioritize information by market impact: lead with what matters most to investors")
         parts.append(f"{sec}{lang}")
 
         return "\n".join(parts)
@@ -217,36 +235,47 @@ Keep it professional, data-driven, yet engaging."""
     def _call_llm(self, input_text, deep_analysis=False):
         """
         路由 LLM 调用。
-        普通模式 → 当前 provider（默认智谱 GLM-4-Flash）
-        深度模式 → 自动升级为 Gemini
+        Gemini 优先，若因地区限制失败则自动回退到智谱 GLM。
         """
         provider = DEEP_LLM_PROVIDER if deep_analysis else self.provider
 
-        if provider == "gemini":
-            return self._call_gemini(input_text)
+        if provider.startswith("gemini"):
+            try:
+                return self._call_gemini(input_text, provider)
+            except Exception as e:
+                if "location" in str(e).lower() or "FAILED_PRECONDITION" in str(e):
+                    logger.warning("Gemini unavailable (region restriction), falling back to ZhiPu GLM...")
+                    return self._call_openai_compat(input_text, "zhipu")
+                raise
         else:
             return self._call_openai_compat(input_text, provider)
 
-    def _call_gemini(self, input_text):
-        """调用 Google Gemini API。"""
+    def _call_gemini(self, input_text, provider_key="gemini"):
+        """调用 Google Gemini API，支持代理。"""
         import requests as http_requests
-        api_key = _get_api_key("GEMINI_API_KEY")
-        cfg = LLM_PROVIDERS["gemini"]
+        cfg = LLM_PROVIDERS[provider_key]
+        api_key = _get_api_key(cfg["env_key"])
         url = f"{cfg['base_url']}/models/{cfg['model']}:generateContent?key={api_key}"
         payload = {
             "contents": [{"parts": [{"text": input_text}]}],
             "generationConfig": {
                 "temperature": 0.7,
-                "maxOutputTokens": 4096,
+                "maxOutputTokens": 8192,
+                "thinkingConfig": {
+                    "thinkingBudget": 0,
+                },
             },
         }
-        resp = http_requests.post(url, json=payload, timeout=120)
+        proxies = _get_proxy()
+        resp = http_requests.post(url, json=payload, timeout=180, proxies=proxies)
+        if resp.status_code != 200:
+            logger.error("Gemini API error %d: %s", resp.status_code, resp.text[:500])
         resp.raise_for_status()
         data = resp.json()
         try:
             return data["candidates"][0]["content"]["parts"][0]["text"]
         except (KeyError, IndexError):
-            return "No response from Gemini."
+            return f"No response from {cfg['name']}."
 
     def _call_openai_compat(self, input_text, provider_key):
         """调用 OpenAI 兼容接口（智谱 GLM 等）。"""
