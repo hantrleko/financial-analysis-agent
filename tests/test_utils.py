@@ -1,7 +1,7 @@
 """src/utils.py 单元测试。"""
 
-import os
 from unittest.mock import MagicMock
+
 from src.utils import get_api_key, get_proxy, retry_api_call
 
 

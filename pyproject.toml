@@ -1,0 +1,52 @@
+[project]
+name = "financial-analysis-agent"
+version = "2.0.0"
+description = "Automated financial intelligence platform — news aggregation, sentiment analysis, and multi-modal report generation."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+
+dependencies = [
+    "requests>=2.31.0",
+    "python-dotenv>=1.1.0",
+    "elevenlabs>=2.36.0",
+    "fpdf2>=2.8.5",
+    "feedparser>=6.0.12",
+    "streamlit>=1.45.0",
+    "edge-tts>=6.1.0",
+    "yfinance>=0.2.66",
+    "plotly>=5.24.0",
+    "nest-asyncio>=1.6.0",
+    "trafilatura>=2.0.0",
+    "beautifulsoup4>=4.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.8",
+    "pre-commit>=4.0",
+]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501", "E402", "B008", "B905", "SIM108", "UP007", "UP015", "UP017"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

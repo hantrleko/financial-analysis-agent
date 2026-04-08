@@ -3,15 +3,14 @@
 消除 main.py 和 app.py 之间的逻辑重复。
 """
 
-import os
 import logging
+import os
 from dataclasses import dataclass, field
 
-from src.collector import NewsCollector
 from src.analyzer import FinancialAnalyzer
-from src.media_gen import MediaGenerator
+from src.collector import NewsCollector
 from src.history import HistoryManager
-from src.config import VERSION
+from src.media_gen import MediaGenerator
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PipelineConfig:
     """分析流水线配置。"""
+
     query: str = "latest financial news market trends"
     num_articles: int = 5
     sources: list = field(default_factory=list)
@@ -41,6 +41,7 @@ class PipelineConfig:
 @dataclass
 class PipelineResult:
     """分析流水线结果。"""
+
     news_items: list = field(default_factory=list)
     report: str = ""
     audio_path: str | None = None

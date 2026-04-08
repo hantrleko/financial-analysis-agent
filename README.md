@@ -2,7 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.30+-red.svg)](https://streamlit.io)
-[![Version](https://img.shields.io/badge/version-v1.9-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v2.0-green.svg)](CHANGELOG.md)
 
 AI 驱动的自动化金融分析系统，集成多源新闻采集、双引擎 LLM 分析、市场情绪评估、语音播报和 PDF 导出。
 

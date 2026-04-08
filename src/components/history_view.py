@@ -3,15 +3,18 @@
 支持查看、搜索、删除、批量导出 ZIP、两期报告对比。
 """
 
+from __future__ import annotations
+
+import difflib
+import html as html_mod
 import io
 import os
 import zipfile
-import difflib
 
 import streamlit as st
 
-from src.i18n import t
 from src.history import HistoryManager
+from src.i18n import t
 
 
 def _export_runs_as_zip(hm: HistoryManager, run_ids: list[str]) -> bytes:
@@ -31,6 +34,7 @@ def _export_runs_as_zip(hm: HistoryManager, run_ids: list[str]) -> bytes:
             meta = run_data.get("metadata")
             if meta:
                 import json
+
                 zf.writestr(f"{prefix}/metadata.json", json.dumps(meta, indent=2, ensure_ascii=False))
             # PDF
             pdf_path = run_data.get("pdf_path")
@@ -55,24 +59,25 @@ def _render_diff(report_a: str, report_b: str, label_a: str, label_b: str):
         st.info(t("no_diff"))
         return
 
-    html_parts = []
+    html_parts: list[str] = []
     for line in diff_lines:
+        escaped = html_mod.escape(line)  # XSS prevention
         if line.startswith("+++") or line.startswith("---"):
-            html_parts.append(f'<div style="color:#94a3b8;font-weight:600;margin-top:8px;">{line}</div>')
+            html_parts.append(f'<div style="color:#94a3b8;font-weight:600;margin-top:8px;">{escaped}</div>')
         elif line.startswith("@@"):
-            html_parts.append(f'<div style="color:#60a5fa;font-size:12px;margin:6px 0 2px 0;">{line}</div>')
+            html_parts.append(f'<div style="color:#60a5fa;font-size:12px;margin:6px 0 2px 0;">{escaped}</div>')
         elif line.startswith("+"):
-            html_parts.append(f'<div class="diff-added">{line}</div>')
+            html_parts.append(f'<div class="diff-added">{escaped}</div>')
         elif line.startswith("-"):
-            html_parts.append(f'<div class="diff-removed">{line}</div>')
+            html_parts.append(f'<div class="diff-removed">{escaped}</div>')
         else:
-            html_parts.append(f'<div style="color:#94a3b8;padding:1px 12px;">{line}</div>')
+            html_parts.append(f'<div style="color:#94a3b8;padding:1px 12px;">{escaped}</div>')
 
     st.markdown(
         '<div style="font-family:monospace;font-size:13px;max-height:600px;overflow-y:auto;'
         'background:#0f172a;border-radius:8px;padding:16px;border:1px solid #334155;">'
         + "\n".join(html_parts)
-        + '</div>',
+        + "</div>",
         unsafe_allow_html=True,
     )
 
@@ -86,7 +91,8 @@ def render_history_tab(history_dir: str):
         hist_col1, hist_col2, hist_col3 = st.columns([2, 1, 1])
         with hist_col1:
             hist_keyword = st.text_input(
-                t("search_keyword"), key="hist_keyword",
+                t("search_keyword"),
+                key="hist_keyword",
                 placeholder=t("search_placeholder"),
             )
         with hist_col2:
@@ -110,14 +116,16 @@ def render_history_tab(history_dir: str):
         tool_col1, tool_col2, tool_col3 = st.columns([1, 1, 2])
         with tool_col1:
             all_run_ids = [r.get("run_id", "") for r in runs]
-            zip_data = _export_runs_as_zip(hm, all_run_ids)
-            st.download_button(
-                label=t("export_zip"),
-                data=zip_data,
-                file_name="financial_reports_export.zip",
-                mime="application/zip",
-                use_container_width=True,
-            )
+            if st.button(t("export_zip"), key="btn_export_zip", use_container_width=True):
+                zip_data = _export_runs_as_zip(hm, all_run_ids)
+                st.download_button(
+                    label=t("export_selected"),
+                    data=zip_data,
+                    file_name="financial_reports_export.zip",
+                    mime="application/zip",
+                    use_container_width=True,
+                    key="dl_export_zip",
+                )
         with tool_col2:
             show_compare = st.checkbox(t("compare_reports"), key="show_compare")
 
@@ -125,7 +133,15 @@ def render_history_tab(history_dir: str):
         if show_compare and len(runs) >= 2:
             st.markdown("---")
             compare_col1, compare_col2 = st.columns(2)
-            run_labels = [f"{r.get('timestamp', 'N/A')[:19]} — {r.get('query', '')[:30]}" for r in runs]
+            # Deduplicate labels to prevent run_id_map key collisions
+            run_labels: list[str] = []
+            seen: dict[str, int] = {}
+            for r in runs:
+                base = f"{r.get('timestamp', 'N/A')[:19]} \u2014 {r.get('query', '')[:30]}"
+                count = seen.get(base, 0)
+                seen[base] = count + 1
+                label = f"{base} ({count + 1})" if count > 0 else base
+                run_labels.append(label)
             run_id_map = {label: r.get("run_id", "") for label, r in zip(run_labels, runs)}
 
             with compare_col1:

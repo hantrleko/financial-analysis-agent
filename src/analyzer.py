@@ -1,14 +1,22 @@
+from __future__ import annotations
+
 import logging
 import os
 import re
+from collections.abc import Generator
 from datetime import datetime, timezone
 
 import yfinance as yf
 
 from src.config import (
-    REPORT_SECTORS, SNAPSHOT_TICKERS, PREVIOUS_REPORT_MAX_CHARS,
-    TIME_RANGE_PERIOD_MAP, PREVIOUS_REPORT_MAX_AGE_HOURS,
-    LLM_PROVIDERS, DEFAULT_LLM_PROVIDER, DEEP_LLM_PROVIDER,
+    DEEP_LLM_PROVIDER,
+    DEFAULT_LLM_PROVIDER,
+    LLM_PROVIDERS,
+    PREVIOUS_REPORT_MAX_AGE_HOURS,
+    PREVIOUS_REPORT_MAX_CHARS,
+    REPORT_SECTORS,
+    SNAPSHOT_TICKERS,
+    TIME_RANGE_PERIOD_MAP,
 )
 from src.utils import get_api_key, get_proxy, retry_api_call
 
@@ -16,11 +24,11 @@ logger = logging.getLogger(__name__)
 
 
 class FinancialAnalyzer:
-    def __init__(self, provider=None):
+    def __init__(self, provider: str | None = None) -> None:
         self.provider = provider or DEFAULT_LLM_PROVIDER
         self._validate_provider()
 
-    def _validate_provider(self):
+    def _validate_provider(self) -> None:
         """校验所选 provider 是否有可用的 API Key。"""
         cfg = LLM_PROVIDERS.get(self.provider)
         if not cfg:
@@ -31,7 +39,7 @@ class FinancialAnalyzer:
 
     # ──────────────────── 辅助方法 ────────────────────
 
-    def _build_news_context(self, news_items):
+    def _build_news_context(self, news_items: list[dict]) -> str:
         """构建新闻上下文，优先使用全文内容。"""
         parts = []
         for i, item in enumerate(news_items, 1):
@@ -47,7 +55,7 @@ class FinancialAnalyzer:
         return "".join(parts)
 
     @staticmethod
-    def fetch_market_snapshot(time_range="week"):
+    def fetch_market_snapshot(time_range: str = "week") -> str:
         """从 yfinance 批量拉取关键资产实时行情快照。"""
         tickers_list = list(SNAPSHOT_TICKERS.values())
         name_by_ticker = {v: k for k, v in SNAPSHOT_TICKERS.items()}
@@ -79,14 +87,15 @@ class FinancialAnalyzer:
         return "\n".join(lines) if lines else "Market data temporarily unavailable."
 
     @staticmethod
-    def _lang_instruction(language):
+    def _lang_instruction(language: str) -> str:
         return (
-            "Write the entire briefing in Chinese (中文)." if language == "zh"
+            "Write the entire briefing in Chinese (中文)."
+            if language == "zh"
             else "Write the entire briefing in English."
         )
 
     @staticmethod
-    def _sector_instruction(sectors):
+    def _sector_instruction(sectors: list[str] | None) -> str:
         if not sectors:
             return ""
         sector_display = {v: k for k, v in REPORT_SECTORS.items()}
@@ -96,7 +105,7 @@ class FinancialAnalyzer:
             "For each sector, analyze the relevant news items. Skip a sector if no relevant news is found.\n"
         )
 
-    def _briefing_structure(self, briefing_length):
+    def _briefing_structure(self, briefing_length: str) -> str:
         """返回不同长度对应的报告结构要求。"""
         if briefing_length == "short":
             return """Produce a very concise Daily Financial Briefing in ~200 words.
@@ -133,7 +142,7 @@ Keep it professional, data-driven, yet engaging."""
     # ──────────────── 上期报告摘要 ────────────────
 
     @staticmethod
-    def _is_previous_report_valid(prev_metadata):
+    def _is_previous_report_valid(prev_metadata: dict) -> bool:
         """校验上期报告是否在有效时间范围内。"""
         try:
             ts = prev_metadata.get("timestamp", "")
@@ -146,14 +155,24 @@ Keep it professional, data-driven, yet engaging."""
             return False
 
     @staticmethod
-    def _summarize_previous_report(report, max_chars=PREVIOUS_REPORT_MAX_CHARS):
+    def _summarize_previous_report(report: str, max_chars: int = PREVIOUS_REPORT_MAX_CHARS) -> str:
         """提取上期报告的关键结论部分。"""
         sections = []
-        for marker in ["Market Sentinel", "Outlook", "Key Drivers", "Actionable",
-                        "市场哨兵", "展望", "关键驱动", "可操作", "风险", "宏观"]:
+        for marker in [
+            "Market Sentinel",
+            "Outlook",
+            "Key Drivers",
+            "Actionable",
+            "市场哨兵",
+            "展望",
+            "关键驱动",
+            "可操作",
+            "风险",
+            "宏观",
+        ]:
             pattern = re.compile(
                 rf"(#+\s*.*?{re.escape(marker)}.*?\n)"  # heading line
-                rf"(.*?)(?=\n#+\s|\Z)",                  # body until next heading or end
+                rf"(.*?)(?=\n#+\s|\Z)",  # body until next heading or end
                 re.DOTALL,
             )
             match = pattern.search(report)
@@ -166,8 +185,15 @@ Keep it professional, data-driven, yet engaging."""
 
     # ──────────────── 构建 Agent Input ────────────────
 
-    def _build_input(self, news_context, briefing_length, language, sectors,
-                     market_snapshot=None, previous_report=None):
+    def _build_input(
+        self,
+        news_context: str,
+        briefing_length: str,
+        language: str,
+        sectors: list[str] | None,
+        market_snapshot: str | None = None,
+        previous_report: str | None = None,
+    ) -> str:
         """构建传入 LLM 的 input 文本。"""
         structure = self._briefing_structure(briefing_length)
         lang = self._lang_instruction(language)
@@ -189,11 +215,17 @@ Keep it professional, data-driven, yet engaging."""
 
         parts.append("\n## Critical Requirements")
         parts.append("- Reference SPECIFIC data points, numbers, and percentages from the provided news articles")
-        parts.append("- Cross-reference news narratives with actual market data — explicitly note any contradictions or confirmations")
+        parts.append(
+            "- Cross-reference news narratives with actual market data — explicitly note any contradictions or confirmations"
+        )
         parts.append("- Identify cause-and-effect chains: what is driving what, and what are the second-order effects")
         if previous_report:
-            parts.append("- Compare with the previous report: highlight what has changed, what trends are continuing, and any reversals")
-        parts.append("- Provide concrete price levels, support/resistance levels, percentages, and metrics wherever possible")
+            parts.append(
+                "- Compare with the previous report: highlight what has changed, what trends are continuing, and any reversals"
+            )
+        parts.append(
+            "- Provide concrete price levels, support/resistance levels, percentages, and metrics wherever possible"
+        )
         parts.append("- Distinguish between confirmed facts and market speculation — label speculation clearly")
         parts.append("- Prioritize information by market impact: lead with what matters most to investors")
         parts.append(f"{sec}{lang}")
@@ -202,7 +234,7 @@ Keep it professional, data-driven, yet engaging."""
 
     # ──────────────── LLM 后端调用 ────────────────
 
-    def _call_llm(self, input_text, deep_analysis=False):
+    def _call_llm(self, input_text: str, deep_analysis: bool = False) -> str:
         """
         路由 LLM 调用。
         Gemini 优先，若因地区限制失败则自动回退到智谱 GLM。
@@ -220,9 +252,10 @@ Keep it professional, data-driven, yet engaging."""
         else:
             return self._call_openai_compat(input_text, provider)
 
-    def _call_gemini(self, input_text, provider_key="gemini"):
+    def _call_gemini(self, input_text: str, provider_key: str = "gemini") -> str:
         """调用 Google Gemini API，支持代理。"""
         import requests as http_requests
+
         cfg = LLM_PROVIDERS[provider_key]
         api_key = get_api_key(cfg["env_key"])
         model = os.getenv("GEMINI_MODEL", cfg["model"])
@@ -238,9 +271,7 @@ Keep it professional, data-driven, yet engaging."""
             },
         }
         proxies = get_proxy()
-        resp = retry_api_call(
-            lambda: http_requests.post(url, json=payload, timeout=180, proxies=proxies)
-        )
+        resp = retry_api_call(lambda: http_requests.post(url, json=payload, timeout=180, proxies=proxies))
         if resp.status_code != 200:
             logger.error("Gemini API error %d: %s", resp.status_code, resp.text[:500])
         resp.raise_for_status()
@@ -250,9 +281,10 @@ Keep it professional, data-driven, yet engaging."""
         except (KeyError, IndexError):
             return f"No response from {cfg['name']}."
 
-    def _call_gemini_stream(self, input_text, provider_key="gemini"):
+    def _call_gemini_stream(self, input_text: str, provider_key: str = "gemini") -> Generator[str, None, None]:
         """调用 Google Gemini API 流式输出，逞块 yield 文本。"""
         import requests as http_requests
+
         cfg = LLM_PROVIDERS[provider_key]
         api_key = get_api_key(cfg["env_key"])
         model = os.getenv("GEMINI_MODEL", cfg["model"])
@@ -269,6 +301,7 @@ Keep it professional, data-driven, yet engaging."""
         }
         proxies = get_proxy()
         import json as json_mod
+
         resp = http_requests.post(url, json=payload, timeout=180, proxies=proxies, stream=True)
         if resp.status_code != 200:
             logger.error("Gemini Stream API error %d: %s", resp.status_code, resp.text[:500])
@@ -297,9 +330,10 @@ Keep it professional, data-driven, yet engaging."""
                 except (json_mod.JSONDecodeError, KeyError, IndexError):
                     continue
 
-    def _call_openai_compat(self, input_text, provider_key):
+    def _call_openai_compat(self, input_text: str, provider_key: str) -> str:
         """调用 OpenAI 兼容接口（智谱 GLM 等）。"""
         import requests as http_requests
+
         cfg = LLM_PROVIDERS[provider_key]
         api_key = get_api_key(cfg["env_key"])
         url = f"{cfg['base_url']}/chat/completions"
@@ -310,15 +344,16 @@ Keep it professional, data-driven, yet engaging."""
         payload = {
             "model": cfg["model"],
             "messages": [
-                {"role": "system", "content": "You are an expert Wall Street Financial Analyst with 20 years of experience."},
+                {
+                    "role": "system",
+                    "content": "You are an expert Wall Street Financial Analyst with 20 years of experience.",
+                },
                 {"role": "user", "content": input_text},
             ],
             "temperature": 0.7,
             "max_tokens": 4096,
         }
-        resp = retry_api_call(
-            lambda: http_requests.post(url, json=payload, headers=headers, timeout=120)
-        )
+        resp = retry_api_call(lambda: http_requests.post(url, json=payload, headers=headers, timeout=120))
         resp.raise_for_status()
         data = resp.json()
         try:
@@ -326,10 +361,12 @@ Keep it professional, data-driven, yet engaging."""
         except (KeyError, IndexError):
             return f"No response from {cfg['name']}."
 
-    def _call_openai_compat_stream(self, input_text, provider_key):
+    def _call_openai_compat_stream(self, input_text: str, provider_key: str) -> Generator[str, None, None]:
         """调用 OpenAI 兼容接口流式输出（智谱 GLM 等）。"""
-        import requests as http_requests
         import json as json_mod
+
+        import requests as http_requests
+
         cfg = LLM_PROVIDERS[provider_key]
         api_key = get_api_key(cfg["env_key"])
         url = f"{cfg['base_url']}/chat/completions"
@@ -340,7 +377,10 @@ Keep it professional, data-driven, yet engaging."""
         payload = {
             "model": cfg["model"],
             "messages": [
-                {"role": "system", "content": "You are an expert Wall Street Financial Analyst with 20 years of experience."},
+                {
+                    "role": "system",
+                    "content": "You are an expert Wall Street Financial Analyst with 20 years of experience.",
+                },
                 {"role": "user", "content": input_text},
             ],
             "temperature": 0.7,
@@ -371,9 +411,17 @@ Keep it professional, data-driven, yet engaging."""
 
     # ──────────────── 公共 API ────────────────
 
-    def analyze_news(self, news_items, briefing_length="medium", language="en",
-                     sectors=None, previous_report=None, deep_analysis=False,
-                     time_range="week", previous_report_meta=None):
+    def analyze_news(
+        self,
+        news_items: list[dict],
+        briefing_length: str = "medium",
+        language: str = "en",
+        sectors: list[str] | None = None,
+        previous_report: str | None = None,
+        deep_analysis: bool = False,
+        time_range: str = "week",
+        previous_report_meta: dict | None = None,
+    ) -> str:
         """分析新闻并生成简报。"""
         if not news_items:
             return "No news to analyze."
@@ -398,7 +446,7 @@ Keep it professional, data-driven, yet engaging."""
         except Exception as e:
             return f"Analysis failed: {e}"
 
-    def _call_llm_stream(self, input_text, deep_analysis=False):
+    def _call_llm_stream(self, input_text: str, deep_analysis: bool = False) -> Generator[str, None, None]:
         """
         流式路由 LLM 调用。
         Gemini 优先，若因地区限制失败则自动回退到智谱 GLM。
@@ -418,9 +466,18 @@ Keep it professional, data-driven, yet engaging."""
         else:
             yield from self._call_openai_compat_stream(input_text, provider)
 
-    def analyze_news_stream(self, news_items, briefing_length="medium", language="en",
-                            sectors=None, previous_report=None, deep_analysis=False,
-                            on_status=None, time_range="week", previous_report_meta=None):
+    def analyze_news_stream(
+        self,
+        news_items: list[dict],
+        briefing_length: str = "medium",
+        language: str = "en",
+        sectors: list[str] | None = None,
+        previous_report: str | None = None,
+        deep_analysis: bool = False,
+        on_status: object = None,
+        time_range: str = "week",
+        previous_report_meta: dict | None = None,
+    ) -> Generator[str, None, None]:
         """分析新闻并生成简报（真正流式 yield 方式）。"""
         if not news_items:
             yield "No news to analyze."
@@ -452,7 +509,7 @@ Keep it professional, data-driven, yet engaging."""
         except Exception as e:
             yield f"Analysis failed: {e}"
 
-    def save_analysis(self, analysis_text, filename="data/daily_report.md"):
+    def save_analysis(self, analysis_text: str, filename: str = "data/daily_report.md") -> None:
         """保存分析报告到 Markdown 文件。"""
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         with open(filename, "w", encoding="utf-8") as f:
@@ -464,10 +521,18 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     analyzer = FinancialAnalyzer()
     mock_news = [
-        {"title": "Tech Stocks Rally", "source": "Bloomberg",
-         "description": "AI hype continues to drive Nasdaq.", "published_age": "1h"},
-        {"title": "Fed Rates Hold Steady", "source": "Reuters",
-         "description": "Powell signals no cuts yet.", "published_age": "2h"}
+        {
+            "title": "Tech Stocks Rally",
+            "source": "Bloomberg",
+            "description": "AI hype continues to drive Nasdaq.",
+            "published_age": "1h",
+        },
+        {
+            "title": "Fed Rates Hold Steady",
+            "source": "Reuters",
+            "description": "Powell signals no cuts yet.",
+            "published_age": "2h",
+        },
     ]
     logger.info("=== Using provider: %s ===", analyzer.provider)
     logger.info(analyzer.analyze_news(mock_news))

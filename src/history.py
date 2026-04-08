@@ -1,20 +1,22 @@
-import os
+from __future__ import annotations
+
 import json
 import logging
+import os
 import shutil
 from datetime import datetime
 
-from src.config import HISTORY_MAX_RUNS, HISTORY_MAX_AGE_DAYS
+from src.config import HISTORY_MAX_AGE_DAYS, HISTORY_MAX_RUNS
 
 logger = logging.getLogger(__name__)
 
 
 class HistoryManager:
-    def __init__(self, history_dir="history"):
+    def __init__(self, history_dir: str = "history") -> None:
         self.history_dir = history_dir
         os.makedirs(history_dir, exist_ok=True)
 
-    def _generate_run_id(self):
+    def _generate_run_id(self) -> str:
         """生成唯一 run_id，优先使用微秒时间戳，并处理极端并发冲突。"""
         base = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         run_id = base
@@ -24,8 +26,17 @@ class HistoryManager:
             suffix += 1
         return run_id
 
-    def save_run(self, news_items, report, query="", sources=None, time_range="",
-                 briefing_length="", audio_file=None, pdf_file=None):
+    def save_run(
+        self,
+        news_items: list[dict],
+        report: str,
+        query: str = "",
+        sources: list[str] | None = None,
+        time_range: str = "",
+        briefing_length: str = "",
+        audio_file: str | None = None,
+        pdf_file: str | None = None,
+    ) -> str:
         """
         保存一次运行的所有结果到带时间戳的目录。
         返回 run_id（时间戳字符串）。
@@ -71,7 +82,7 @@ class HistoryManager:
         self.cleanup()
         return run_id
 
-    def list_runs(self):
+    def list_runs(self) -> list[dict]:
         """
         列出所有历史运行记录，按时间倒序。
         返回 metadata 列表。
@@ -87,7 +98,7 @@ class HistoryManager:
                     runs.append(json.load(f))
         return runs
 
-    def load_run(self, run_id):
+    def load_run(self, run_id: str) -> dict | None:
         """
         加载指定运行的完整数据。
         """
@@ -127,7 +138,7 @@ class HistoryManager:
 
         return result
 
-    def delete_run(self, run_id):
+    def delete_run(self, run_id: str) -> bool:
         """删除指定运行记录。"""
         run_dir = os.path.join(self.history_dir, run_id)
         if os.path.exists(run_dir):
@@ -136,7 +147,9 @@ class HistoryManager:
             return True
         return False
 
-    def search_runs(self, keyword=None, date_from=None, date_to=None):
+    def search_runs(
+        self, keyword: str | None = None, date_from: str | datetime | None = None, date_to: str | datetime | None = None
+    ) -> list[dict]:
         """
         搜索/过滤历史记录。
         keyword: 在 query 和 report 中搜索关键词（不区分大小写）
@@ -168,9 +181,7 @@ class HistoryManager:
                     results.append(meta)
                     continue
                 # Keyword not in query — check report content
-                report_path = os.path.join(
-                    self.history_dir, meta["run_id"], "report.md"
-                )
+                report_path = os.path.join(self.history_dir, meta["run_id"], "report.md")
                 if os.path.exists(report_path):
                     with open(report_path, "r", encoding="utf-8") as f:
                         report_text = f.read()
@@ -182,7 +193,7 @@ class HistoryManager:
 
         return results
 
-    def cleanup(self):
+    def cleanup(self) -> int:
         """自动清理超量和过期的历史记录。"""
         runs = self.list_runs()  # 已按时间倒序
 
@@ -214,6 +225,6 @@ class HistoryManager:
             logger.info("Cleaned up %d old history records.", deleted)
         return deleted
 
-    def get_run_count(self):
+    def get_run_count(self) -> int:
         """返回历史记录总数。"""
         return len(self.list_runs())
