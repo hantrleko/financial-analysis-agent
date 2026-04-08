@@ -363,12 +363,14 @@ class MediaGenerator:
 
             # ===== Page numbers (header + footer) =====
             total_pages = pdf.pages_count
+            pdf.set_auto_page_break(auto=False)
             for page_num in range(1, total_pages + 1):
                 pdf.page = page_num
                 # Footer: page number
                 pdf.set_y(-15)
                 pdf.set_font(font_name, "", 8)
                 pdf.cell(0, 8, f"- {page_num} / {total_pages} -", align="C")
+            pdf.set_auto_page_break(auto=True, margin=20)
 
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
             pdf.output(output_file)
