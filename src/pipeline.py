@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PipelineConfig:
     """分析流水线配置。"""
+
     query: str = "latest financial news market trends"
     num_articles: int = 5
     sources: list = field(default_factory=list)
@@ -40,6 +41,7 @@ class PipelineConfig:
 @dataclass
 class PipelineResult:
     """分析流水线结果。"""
+
     news_items: list = field(default_factory=list)
     report: str = ""
     audio_path: str | None = None

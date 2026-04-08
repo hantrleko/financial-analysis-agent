@@ -3,6 +3,7 @@
 从 yfinance 拉取多维度市场数据，计算各资产/板块的多空信号，
 输出综合情绪评分、机会与风险识别。
 """
+
 from __future__ import annotations
 
 import logging
@@ -18,9 +19,11 @@ logger = logging.getLogger(__name__)
 
 # ──────────────────── 数据结构 ────────────────────
 
+
 @dataclass
 class AssetSignal:
     """单个资产的情绪信号。"""
+
     name: str
     ticker: str
     sector: str
@@ -29,16 +32,17 @@ class AssetSignal:
     change_1d_pct: float = 0.0
     change_5d_pct: float = 0.0
     change_20d_pct: float = 0.0
-    above_ma20: bool = False          # 价格在 20 日均线之上
-    volume_ratio: float = 1.0         # 当日成交量 / 20 日均量
-    score: float = 0.0                # 综合情绪分 (-1 ~ +1)
-    signal: str = "neutral"           # strong_bull / bull / neutral / bear / strong_bear
+    above_ma20: bool = False  # 价格在 20 日均线之上
+    volume_ratio: float = 1.0  # 当日成交量 / 20 日均量
+    score: float = 0.0  # 综合情绪分 (-1 ~ +1)
+    signal: str = "neutral"  # strong_bull / bull / neutral / bear / strong_bear
     reason: str = ""
 
 
 @dataclass
 class SectorSummary:
     """板块/类别的聚合情绪。"""
+
     name: str
     avg_score: float = 0.0
     signal: str = "neutral"
@@ -51,24 +55,25 @@ class SectorSummary:
 @dataclass
 class SentimentReport:
     """完整的市场情绪报告。"""
-    overall_score: float = 0.0        # 整体情绪分 (-1 ~ +1)
+
+    overall_score: float = 0.0  # 整体情绪分 (-1 ~ +1)
     overall_signal: str = "neutral"
     bull_count: int = 0
     bear_count: int = 0
     neutral_count: int = 0
     vix_value: float = 0.0
-    vix_level: str = "normal"         # low / normal / elevated / high / extreme
-    sectors: dict = field(default_factory=dict)    # {group_name: SectorSummary}
+    vix_level: str = "normal"  # low / normal / elevated / high / extreme
+    sectors: dict = field(default_factory=dict)  # {group_name: SectorSummary}
     opportunities: list = field(default_factory=list)  # list[AssetSignal]
-    risks: list = field(default_factory=list)           # list[AssetSignal]
-    all_assets: list = field(default_factory=list)      # list[AssetSignal]
+    risks: list = field(default_factory=list)  # list[AssetSignal]
+    all_assets: list = field(default_factory=list)  # list[AssetSignal]
     timestamp: str = ""
 
 
 # ──────────────────── 核心计算 ────────────────────
 
-class MarketSentimentAnalyzer:
 
+class MarketSentimentAnalyzer:
     @staticmethod
     def analyze() -> SentimentReport:
         """执行完整的市场情绪分析，返回 SentimentReport。"""
@@ -104,7 +109,12 @@ class MarketSentimentAnalyzer:
         asset_signals = []
         for ticker, (name, sector, group) in ticker_meta.items():
             sig = MarketSentimentAnalyzer._compute_asset_signal(
-                name, ticker, sector, group, close, volume,
+                name,
+                ticker,
+                sector,
+                group,
+                close,
+                volume,
             )
             if sig:
                 asset_signals.append(sig)
@@ -155,7 +165,8 @@ class MarketSentimentAnalyzer:
         # 7. 识别机会与风险
         report.opportunities = sorted(
             [s for s in non_vix if s.score >= SENTIMENT_THRESHOLDS["bull"]],
-            key=lambda x: x.score, reverse=True,
+            key=lambda x: x.score,
+            reverse=True,
         )
         report.risks = sorted(
             [s for s in non_vix if s.score <= SENTIMENT_THRESHOLDS["bear"]],
@@ -164,14 +175,20 @@ class MarketSentimentAnalyzer:
 
         logger.info(
             "Sentiment analysis complete: overall=%.2f (%s), bull=%d, bear=%d, neutral=%d",
-            report.overall_score, report.overall_signal,
-            report.bull_count, report.bear_count, report.neutral_count,
+            report.overall_score,
+            report.overall_signal,
+            report.bull_count,
+            report.bear_count,
+            report.neutral_count,
         )
         return report
 
     @staticmethod
     def _compute_asset_signal(
-        name: str, ticker: str, sector: str, group: str,
+        name: str,
+        ticker: str,
+        sector: str,
+        group: str,
         close_df: pd.DataFrame | pd.Series,
         volume_df: pd.DataFrame | pd.Series | None,
     ) -> AssetSignal | None:
@@ -273,13 +290,7 @@ class MarketSentimentAnalyzer:
         elif sig.volume_ratio < 0.5:
             vol_score = -0.2  # 缩量，趋势减弱
 
-        total = (
-            day_score * 0.30
-            + week_score * 0.25
-            + month_score * 0.20
-            + ma_score * 0.15
-            + vol_score * 0.10
-        )
+        total = day_score * 0.30 + week_score * 0.25 + month_score * 0.20 + ma_score * 0.15 + vol_score * 0.10
         return max(-1.0, min(1.0, total))
 
     @staticmethod
@@ -376,8 +387,7 @@ if __name__ == "__main__":
     result = analyzer.analyze()
     logger.info("Overall: %+.2f (%s)", result.overall_score, result.overall_signal)
     logger.info("VIX: %.1f (%s)", result.vix_value, result.vix_level)
-    logger.info("Bull: %d  Bear: %d  Neutral: %d",
-                result.bull_count, result.bear_count, result.neutral_count)
+    logger.info("Bull: %d  Bear: %d  Neutral: %d", result.bull_count, result.bear_count, result.neutral_count)
     logger.info("--- Opportunities ---")
     for a in result.opportunities:
         logger.info("  %s: %+.2f (%s)", a.name, a.score, a.reason)

@@ -89,7 +89,8 @@ class FinancialAnalyzer:
     @staticmethod
     def _lang_instruction(language: str) -> str:
         return (
-            "Write the entire briefing in Chinese (中文)." if language == "zh"
+            "Write the entire briefing in Chinese (中文)."
+            if language == "zh"
             else "Write the entire briefing in English."
         )
 
@@ -157,11 +158,21 @@ Keep it professional, data-driven, yet engaging."""
     def _summarize_previous_report(report: str, max_chars: int = PREVIOUS_REPORT_MAX_CHARS) -> str:
         """提取上期报告的关键结论部分。"""
         sections = []
-        for marker in ["Market Sentinel", "Outlook", "Key Drivers", "Actionable",
-                        "市场哨兵", "展望", "关键驱动", "可操作", "风险", "宏观"]:
+        for marker in [
+            "Market Sentinel",
+            "Outlook",
+            "Key Drivers",
+            "Actionable",
+            "市场哨兵",
+            "展望",
+            "关键驱动",
+            "可操作",
+            "风险",
+            "宏观",
+        ]:
             pattern = re.compile(
                 rf"(#+\s*.*?{re.escape(marker)}.*?\n)"  # heading line
-                rf"(.*?)(?=\n#+\s|\Z)",                  # body until next heading or end
+                rf"(.*?)(?=\n#+\s|\Z)",  # body until next heading or end
                 re.DOTALL,
             )
             match = pattern.search(report)
@@ -174,10 +185,15 @@ Keep it professional, data-driven, yet engaging."""
 
     # ──────────────── 构建 Agent Input ────────────────
 
-    def _build_input(self, news_context: str, briefing_length: str, language: str,
-                     sectors: list[str] | None,
-                     market_snapshot: str | None = None,
-                     previous_report: str | None = None) -> str:
+    def _build_input(
+        self,
+        news_context: str,
+        briefing_length: str,
+        language: str,
+        sectors: list[str] | None,
+        market_snapshot: str | None = None,
+        previous_report: str | None = None,
+    ) -> str:
         """构建传入 LLM 的 input 文本。"""
         structure = self._briefing_structure(briefing_length)
         lang = self._lang_instruction(language)
@@ -199,11 +215,17 @@ Keep it professional, data-driven, yet engaging."""
 
         parts.append("\n## Critical Requirements")
         parts.append("- Reference SPECIFIC data points, numbers, and percentages from the provided news articles")
-        parts.append("- Cross-reference news narratives with actual market data — explicitly note any contradictions or confirmations")
+        parts.append(
+            "- Cross-reference news narratives with actual market data — explicitly note any contradictions or confirmations"
+        )
         parts.append("- Identify cause-and-effect chains: what is driving what, and what are the second-order effects")
         if previous_report:
-            parts.append("- Compare with the previous report: highlight what has changed, what trends are continuing, and any reversals")
-        parts.append("- Provide concrete price levels, support/resistance levels, percentages, and metrics wherever possible")
+            parts.append(
+                "- Compare with the previous report: highlight what has changed, what trends are continuing, and any reversals"
+            )
+        parts.append(
+            "- Provide concrete price levels, support/resistance levels, percentages, and metrics wherever possible"
+        )
         parts.append("- Distinguish between confirmed facts and market speculation — label speculation clearly")
         parts.append("- Prioritize information by market impact: lead with what matters most to investors")
         parts.append(f"{sec}{lang}")
@@ -233,6 +255,7 @@ Keep it professional, data-driven, yet engaging."""
     def _call_gemini(self, input_text: str, provider_key: str = "gemini") -> str:
         """调用 Google Gemini API，支持代理。"""
         import requests as http_requests
+
         cfg = LLM_PROVIDERS[provider_key]
         api_key = get_api_key(cfg["env_key"])
         model = os.getenv("GEMINI_MODEL", cfg["model"])
@@ -248,9 +271,7 @@ Keep it professional, data-driven, yet engaging."""
             },
         }
         proxies = get_proxy()
-        resp = retry_api_call(
-            lambda: http_requests.post(url, json=payload, timeout=180, proxies=proxies)
-        )
+        resp = retry_api_call(lambda: http_requests.post(url, json=payload, timeout=180, proxies=proxies))
         if resp.status_code != 200:
             logger.error("Gemini API error %d: %s", resp.status_code, resp.text[:500])
         resp.raise_for_status()
@@ -260,10 +281,10 @@ Keep it professional, data-driven, yet engaging."""
         except (KeyError, IndexError):
             return f"No response from {cfg['name']}."
 
-    def _call_gemini_stream(self, input_text: str,
-                            provider_key: str = "gemini") -> Generator[str, None, None]:
+    def _call_gemini_stream(self, input_text: str, provider_key: str = "gemini") -> Generator[str, None, None]:
         """调用 Google Gemini API 流式输出，逞块 yield 文本。"""
         import requests as http_requests
+
         cfg = LLM_PROVIDERS[provider_key]
         api_key = get_api_key(cfg["env_key"])
         model = os.getenv("GEMINI_MODEL", cfg["model"])
@@ -280,6 +301,7 @@ Keep it professional, data-driven, yet engaging."""
         }
         proxies = get_proxy()
         import json as json_mod
+
         resp = http_requests.post(url, json=payload, timeout=180, proxies=proxies, stream=True)
         if resp.status_code != 200:
             logger.error("Gemini Stream API error %d: %s", resp.status_code, resp.text[:500])
@@ -311,6 +333,7 @@ Keep it professional, data-driven, yet engaging."""
     def _call_openai_compat(self, input_text: str, provider_key: str) -> str:
         """调用 OpenAI 兼容接口（智谱 GLM 等）。"""
         import requests as http_requests
+
         cfg = LLM_PROVIDERS[provider_key]
         api_key = get_api_key(cfg["env_key"])
         url = f"{cfg['base_url']}/chat/completions"
@@ -321,15 +344,16 @@ Keep it professional, data-driven, yet engaging."""
         payload = {
             "model": cfg["model"],
             "messages": [
-                {"role": "system", "content": "You are an expert Wall Street Financial Analyst with 20 years of experience."},
+                {
+                    "role": "system",
+                    "content": "You are an expert Wall Street Financial Analyst with 20 years of experience.",
+                },
                 {"role": "user", "content": input_text},
             ],
             "temperature": 0.7,
             "max_tokens": 4096,
         }
-        resp = retry_api_call(
-            lambda: http_requests.post(url, json=payload, headers=headers, timeout=120)
-        )
+        resp = retry_api_call(lambda: http_requests.post(url, json=payload, headers=headers, timeout=120))
         resp.raise_for_status()
         data = resp.json()
         try:
@@ -337,12 +361,12 @@ Keep it professional, data-driven, yet engaging."""
         except (KeyError, IndexError):
             return f"No response from {cfg['name']}."
 
-    def _call_openai_compat_stream(self, input_text: str,
-                                    provider_key: str) -> Generator[str, None, None]:
+    def _call_openai_compat_stream(self, input_text: str, provider_key: str) -> Generator[str, None, None]:
         """调用 OpenAI 兼容接口流式输出（智谱 GLM 等）。"""
         import json as json_mod
 
         import requests as http_requests
+
         cfg = LLM_PROVIDERS[provider_key]
         api_key = get_api_key(cfg["env_key"])
         url = f"{cfg['base_url']}/chat/completions"
@@ -353,7 +377,10 @@ Keep it professional, data-driven, yet engaging."""
         payload = {
             "model": cfg["model"],
             "messages": [
-                {"role": "system", "content": "You are an expert Wall Street Financial Analyst with 20 years of experience."},
+                {
+                    "role": "system",
+                    "content": "You are an expert Wall Street Financial Analyst with 20 years of experience.",
+                },
                 {"role": "user", "content": input_text},
             ],
             "temperature": 0.7,
@@ -384,11 +411,17 @@ Keep it professional, data-driven, yet engaging."""
 
     # ──────────────── 公共 API ────────────────
 
-    def analyze_news(self, news_items: list[dict], briefing_length: str = "medium",
-                     language: str = "en", sectors: list[str] | None = None,
-                     previous_report: str | None = None, deep_analysis: bool = False,
-                     time_range: str = "week",
-                     previous_report_meta: dict | None = None) -> str:
+    def analyze_news(
+        self,
+        news_items: list[dict],
+        briefing_length: str = "medium",
+        language: str = "en",
+        sectors: list[str] | None = None,
+        previous_report: str | None = None,
+        deep_analysis: bool = False,
+        time_range: str = "week",
+        previous_report_meta: dict | None = None,
+    ) -> str:
         """分析新闻并生成简报。"""
         if not news_items:
             return "No news to analyze."
@@ -413,8 +446,7 @@ Keep it professional, data-driven, yet engaging."""
         except Exception as e:
             return f"Analysis failed: {e}"
 
-    def _call_llm_stream(self, input_text: str,
-                         deep_analysis: bool = False) -> Generator[str, None, None]:
+    def _call_llm_stream(self, input_text: str, deep_analysis: bool = False) -> Generator[str, None, None]:
         """
         流式路由 LLM 调用。
         Gemini 优先，若因地区限制失败则自动回退到智谱 GLM。
@@ -435,11 +467,16 @@ Keep it professional, data-driven, yet engaging."""
             yield from self._call_openai_compat_stream(input_text, provider)
 
     def analyze_news_stream(
-            self, news_items: list[dict], briefing_length: str = "medium",
-            language: str = "en", sectors: list[str] | None = None,
-            previous_report: str | None = None, deep_analysis: bool = False,
-            on_status: object = None, time_range: str = "week",
-            previous_report_meta: dict | None = None,
+        self,
+        news_items: list[dict],
+        briefing_length: str = "medium",
+        language: str = "en",
+        sectors: list[str] | None = None,
+        previous_report: str | None = None,
+        deep_analysis: bool = False,
+        on_status: object = None,
+        time_range: str = "week",
+        previous_report_meta: dict | None = None,
     ) -> Generator[str, None, None]:
         """分析新闻并生成简报（真正流式 yield 方式）。"""
         if not news_items:
@@ -484,10 +521,18 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     analyzer = FinancialAnalyzer()
     mock_news = [
-        {"title": "Tech Stocks Rally", "source": "Bloomberg",
-         "description": "AI hype continues to drive Nasdaq.", "published_age": "1h"},
-        {"title": "Fed Rates Hold Steady", "source": "Reuters",
-         "description": "Powell signals no cuts yet.", "published_age": "2h"}
+        {
+            "title": "Tech Stocks Rally",
+            "source": "Bloomberg",
+            "description": "AI hype continues to drive Nasdaq.",
+            "published_age": "1h",
+        },
+        {
+            "title": "Fed Rates Hold Steady",
+            "source": "Reuters",
+            "description": "Powell signals no cuts yet.",
+            "published_age": "2h",
+        },
     ]
     logger.info("=== Using provider: %s ===", analyzer.provider)
     logger.info(analyzer.analyze_news(mock_news))

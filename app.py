@@ -148,7 +148,9 @@ with st.sidebar.expander(t("basic_settings"), expanded=True):
         "gemini-2.0-flash-lite",
     ]
     _default_gemini_model = os.getenv("GEMINI_MODEL", _gemini_model_choices[0])
-    _gemini_model_idx = _gemini_model_choices.index(_default_gemini_model) if _default_gemini_model in _gemini_model_choices else 0
+    _gemini_model_idx = (
+        _gemini_model_choices.index(_default_gemini_model) if _default_gemini_model in _gemini_model_choices else 0
+    )
     _selected_gemini_model = st.selectbox(
         t("gemini_model"),
         options=_gemini_model_choices,
@@ -320,16 +322,46 @@ def render_step_pills(current_step: int):
         else:
             cls = ""
         parts.append(f'<div class="progress-step {cls}">{icon} {t(key)}</div>')
-    return '<div class="progress-steps">' + "".join(parts) + '</div>'
+    return '<div class="progress-steps">' + "".join(parts) + "</div>"
 
 
 def _sentiment_tag(title: str) -> str:
     """Simple keyword-based sentiment tag for a news title."""
     title_lower = title.lower()
-    pos_kw = ["surge", "jump", "rally", "gain", "rise", "soar", "record", "boom",
-              "涨", "大涨", "飙升", "反弹", "突破", "创新高", "利好"]
-    neg_kw = ["crash", "plunge", "drop", "fall", "decline", "slump", "fear", "risk",
-              "跌", "大跌", "暴跌", "下跌", "崩", "风险", "利空"]
+    pos_kw = [
+        "surge",
+        "jump",
+        "rally",
+        "gain",
+        "rise",
+        "soar",
+        "record",
+        "boom",
+        "涨",
+        "大涨",
+        "飙升",
+        "反弹",
+        "突破",
+        "创新高",
+        "利好",
+    ]
+    neg_kw = [
+        "crash",
+        "plunge",
+        "drop",
+        "fall",
+        "decline",
+        "slump",
+        "fear",
+        "risk",
+        "跌",
+        "大跌",
+        "暴跌",
+        "下跌",
+        "崩",
+        "风险",
+        "利空",
+    ]
     if any(k in title_lower for k in pos_kw):
         return t("sentiment_positive")
     if any(k in title_lower for k in neg_kw):
@@ -340,12 +372,12 @@ def _sentiment_tag(title: str) -> str:
 def _render_news_list(news_items: list, show_full_content: bool = False) -> None:
     """Render news items with sentiment tags and optional source grouping."""
     _group_options = {t("group_none"): "none", t("group_source"): "source"}
-    _grp_label = st.selectbox(t("news_group_by"), options=list(_group_options.keys()),
-                              index=0, key="news_group_select")
+    _grp_label = st.selectbox(t("news_group_by"), options=list(_group_options.keys()), index=0, key="news_group_select")
     group_mode = _group_options[_grp_label]
 
     if group_mode == "source":
         from collections import defaultdict
+
         groups: dict[str, list] = defaultdict(list)
         for item in news_items:
             groups[item.get("source", "Unknown")].append(item)
@@ -365,23 +397,18 @@ def _render_news_list(news_items: list, show_full_content: bool = False) -> None
             desc = item.get("description", "")
             full = item.get("full_content", "") if show_full_content else ""
             extra = f"\n\n\U0001f4c4 _{t('chars_scraped', n=len(full))}_" if full else ""
-            st.markdown(
-                f"{tag} **{item.get('title', 'No Title')}** "
-                f"\u2014 *{item.get('source', 'Unknown')}*"
-            )
+            st.markdown(f"{tag} **{item.get('title', 'No Title')}** \u2014 *{item.get('source', 'Unknown')}*")
             st.caption(f"{desc}{extra}")
             st.divider()
 
 
-def display_result(news_items, report, audio_path=None, pdf_path=None,
-                   use_newspaper=False, newspaper_theme="classic"):
+def display_result(news_items, report, audio_path=None, pdf_path=None, use_newspaper=False, newspaper_theme="classic"):
     with st.expander(t("collected_news", count=len(news_items)), expanded=False):
         _render_news_list(news_items)
 
     st.subheader(t("analysis_report"))
     if use_newspaper:
-        st.markdown(render_newspaper(report, theme_name=newspaper_theme),
-                    unsafe_allow_html=True)
+        st.markdown(render_newspaper(report, theme_name=newspaper_theme), unsafe_allow_html=True)
     else:
         st.markdown(report)
 
@@ -400,9 +427,14 @@ def display_result(news_items, report, audio_path=None, pdf_path=None,
             )
 
 
-tab_analysis, tab_sentiment, tab_charts, tab_history = st.tabs([
-    t("tab_analysis"), t("tab_sentiment"), t("tab_charts"), t("tab_history"),
-])
+tab_analysis, tab_sentiment, tab_charts, tab_history = st.tabs(
+    [
+        t("tab_analysis"),
+        t("tab_sentiment"),
+        t("tab_charts"),
+        t("tab_history"),
+    ]
+)
 
 with tab_analysis:
     if run_clicked:
@@ -514,7 +546,9 @@ with tab_analysis:
                         st.audio(audio_path)
 
                 if generate_pdf:
-                    pdf_title = "\u91d1\u878d\u5206\u6790\u7b80\u62a5" if language == "zh" else "Financial Analysis Briefing"
+                    pdf_title = (
+                        "\u91d1\u878d\u5206\u6790\u7b80\u62a5" if language == "zh" else "Financial Analysis Briefing"
+                    )
                     pdf_path = media_gen.generate_pdf(
                         report,
                         output_file=os.path.join(DATA_DIR, "daily_briefing.pdf"),

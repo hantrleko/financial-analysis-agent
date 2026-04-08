@@ -46,8 +46,7 @@ def fetch_price_data(
     逐个使用 yf.Ticker().history() 下载收盘价。
     支持 period 或 start/end 自定义日期范围。
     """
-    logger.info("Fetching price data for %d tickers, period=%s start=%s end=%s",
-                len(tickers), period, start, end)
+    logger.info("Fetching price data for %d tickers, period=%s start=%s end=%s", len(tickers), period, start, end)
     frames: dict[str, pd.Series] = {}
     for ticker in tickers:
         try:
@@ -126,7 +125,8 @@ def create_price_chart(df: pd.DataFrame, title: str = "Asset Price Trends") -> g
 
 
 def create_candlestick_chart(
-    ohlcv: pd.DataFrame, title: str = "Candlestick Chart",
+    ohlcv: pd.DataFrame,
+    title: str = "Candlestick Chart",
 ) -> go.Figure:
     """Create a candlestick (K-line) chart from OHLCV data."""
     fig = go.Figure()
@@ -134,35 +134,45 @@ def create_candlestick_chart(
         fig.update_layout(title="暂无数据", template="plotly_dark")
         return fig
 
-    fig.add_trace(go.Candlestick(
-        x=ohlcv.index,
-        open=ohlcv["Open"],
-        high=ohlcv["High"],
-        low=ohlcv["Low"],
-        close=ohlcv["Close"],
-        increasing_line_color="#22c55e",
-        decreasing_line_color="#ef4444",
-        name="Price",
-    ))
+    fig.add_trace(
+        go.Candlestick(
+            x=ohlcv.index,
+            open=ohlcv["Open"],
+            high=ohlcv["High"],
+            low=ohlcv["Low"],
+            close=ohlcv["Close"],
+            increasing_line_color="#22c55e",
+            decreasing_line_color="#ef4444",
+            name="Price",
+        )
+    )
 
     # Add MA20 overlay
     if len(ohlcv) >= 20:
         ma20 = ohlcv["Close"].rolling(window=20).mean()
-        fig.add_trace(go.Scatter(
-            x=ohlcv.index, y=ma20, mode="lines",
-            name="MA20", line=dict(color="#60a5fa", width=1.5),
-        ))
+        fig.add_trace(
+            go.Scatter(
+                x=ohlcv.index,
+                y=ma20,
+                mode="lines",
+                name="MA20",
+                line=dict(color="#60a5fa", width=1.5),
+            )
+        )
 
     # Add volume as bar chart on secondary y-axis
     if "Volume" in ohlcv.columns:
-        colors = [
-            "#22c55e" if c >= o else "#ef4444"
-            for c, o in zip(ohlcv["Close"], ohlcv["Open"])
-        ]
-        fig.add_trace(go.Bar(
-            x=ohlcv.index, y=ohlcv["Volume"], name="Volume",
-            marker_color=colors, opacity=0.4, yaxis="y2",
-        ))
+        colors = ["#22c55e" if c >= o else "#ef4444" for c, o in zip(ohlcv["Close"], ohlcv["Open"])]
+        fig.add_trace(
+            go.Bar(
+                x=ohlcv.index,
+                y=ohlcv["Volume"],
+                name="Volume",
+                marker_color=colors,
+                opacity=0.4,
+                yaxis="y2",
+            )
+        )
 
     fig.update_layout(
         title=title,
@@ -171,8 +181,13 @@ def create_candlestick_chart(
         showlegend=True,
         xaxis_rangeslider_visible=False,
         yaxis=dict(title="Price", side="left"),
-        yaxis2=dict(title="Volume", side="right", overlaying="y",
-                    showgrid=False, range=[0, ohlcv.get("Volume", pd.Series([1])).max() * 4]),
+        yaxis2=dict(
+            title="Volume",
+            side="right",
+            overlaying="y",
+            showgrid=False,
+            range=[0, ohlcv.get("Volume", pd.Series([1])).max() * 4],
+        ),
         margin=dict(l=60, r=60, t=60, b=30),
     )
     return fig
@@ -197,17 +212,20 @@ def create_correlation_matrix(
     returns = df.pct_change().dropna()
     corr = returns.corr()
 
-    fig = go.Figure(data=go.Heatmap(
-        z=np.round(corr.values, 2),
-        x=corr.columns.tolist(),
-        y=corr.index.tolist(),
-        colorscale="RdBu_r",
-        zmin=-1, zmax=1,
-        text=np.round(corr.values, 2),
-        texttemplate="%{text}",
-        textfont={"size": 11},
-        hovertemplate="%{x} vs %{y}: %{z:.2f}<extra></extra>",
-    ))
+    fig = go.Figure(
+        data=go.Heatmap(
+            z=np.round(corr.values, 2),
+            x=corr.columns.tolist(),
+            y=corr.index.tolist(),
+            colorscale="RdBu_r",
+            zmin=-1,
+            zmax=1,
+            text=np.round(corr.values, 2),
+            texttemplate="%{text}",
+            textfont={"size": 11},
+            hovertemplate="%{x} vs %{y}: %{z:.2f}<extra></extra>",
+        )
+    )
     fig.update_layout(
         title="Asset Correlation Matrix",
         template="plotly_dark",
@@ -228,8 +246,7 @@ def create_asset_dashboard(
     为选定的资产类别分别生成图表。
     chart_type: 'line' 折线图 | 'candlestick' K线图
     """
-    logger.info("Building dashboard for groups: %s, period=%s, type=%s",
-                selected_groups, period, chart_type)
+    logger.info("Building dashboard for groups: %s, period=%s, type=%s", selected_groups, period, chart_type)
     figures: dict[str, go.Figure] = {}
     for group_name in selected_groups:
         assets = ASSET_GROUPS.get(group_name)
@@ -243,10 +260,10 @@ def create_asset_dashboard(
         if chart_type == "candlestick":
             # Candlestick: one chart per ticker in group
             for asset in assets:
-                ohlcv = fetch_ohlcv_data(asset["ticker"], period=period,
-                                         start=start, end=end)
+                ohlcv = fetch_ohlcv_data(asset["ticker"], period=period, start=start, end=end)
                 fig = create_candlestick_chart(
-                    ohlcv, title=f"{group_name} — {asset['name']}",
+                    ohlcv,
+                    title=f"{group_name} — {asset['name']}",
                 )
                 figures[f"{group_name} — {asset['name']}"] = fig
         else:

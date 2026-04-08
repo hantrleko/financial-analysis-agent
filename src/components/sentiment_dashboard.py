@@ -26,26 +26,34 @@ def _cached_sentiment() -> SentimentReport:
 def _sentiment_gauge(score: float) -> go.Figure:
     """Create a half-gauge chart for overall sentiment score (-1 to +1)."""
     color = "#22c55e" if score >= 0.2 else "#ef4444" if score <= -0.2 else "#64748b"
-    fig = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=score,
-        number={"suffix": "", "font": {"size": 28, "color": "#e2e8f0"}},
-        gauge={
-            "axis": {"range": [-1, 1], "tickwidth": 1, "tickcolor": "#475569",
-                     "tickfont": {"color": "#94a3b8", "size": 10}},
-            "bar": {"color": color, "thickness": 0.6},
-            "bgcolor": "#1e293b",
-            "borderwidth": 0,
-            "steps": [
-                {"range": [-1, -0.2], "color": "rgba(239,68,68,0.15)"},
-                {"range": [-0.2, 0.2], "color": "rgba(100,116,139,0.15)"},
-                {"range": [0.2, 1], "color": "rgba(34,197,94,0.15)"},
-            ],
-        },
-    ))
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=score,
+            number={"suffix": "", "font": {"size": 28, "color": "#e2e8f0"}},
+            gauge={
+                "axis": {
+                    "range": [-1, 1],
+                    "tickwidth": 1,
+                    "tickcolor": "#475569",
+                    "tickfont": {"color": "#94a3b8", "size": 10},
+                },
+                "bar": {"color": color, "thickness": 0.6},
+                "bgcolor": "#1e293b",
+                "borderwidth": 0,
+                "steps": [
+                    {"range": [-1, -0.2], "color": "rgba(239,68,68,0.15)"},
+                    {"range": [-0.2, 0.2], "color": "rgba(100,116,139,0.15)"},
+                    {"range": [0.2, 1], "color": "rgba(34,197,94,0.15)"},
+                ],
+            },
+        )
+    )
     fig.update_layout(
-        height=180, margin=dict(l=20, r=20, t=30, b=10),
-        paper_bgcolor="rgba(0,0,0,0)", font={"color": "#e2e8f0"},
+        height=180,
+        margin=dict(l=20, r=20, t=30, b=10),
+        paper_bgcolor="rgba(0,0,0,0)",
+        font={"color": "#e2e8f0"},
     )
     return fig
 
@@ -64,36 +72,37 @@ def _sector_radar(sentiment: SentimentReport) -> go.Figure:
 
     if not sector_names:
         fig = go.Figure()
-        fig.update_layout(height=300, template="plotly_dark",
-                          title=t("sector_breakdown"))
+        fig.update_layout(height=300, template="plotly_dark", title=t("sector_breakdown"))
         return fig
 
     # Close the polygon
     sector_names_closed = sector_names + [sector_names[0]]
     sector_scores_closed = sector_scores + [sector_scores[0]]
 
-    fig = go.Figure(go.Scatterpolar(
-        r=sector_scores_closed,
-        theta=sector_names_closed,
-        fill="toself",
-        fillcolor="rgba(59,130,246,0.15)",
-        line=dict(color="#3b82f6", width=2),
-        marker=dict(size=6, color="#60a5fa"),
-    ))
+    fig = go.Figure(
+        go.Scatterpolar(
+            r=sector_scores_closed,
+            theta=sector_names_closed,
+            fill="toself",
+            fillcolor="rgba(59,130,246,0.15)",
+            line=dict(color="#3b82f6", width=2),
+            marker=dict(size=6, color="#60a5fa"),
+        )
+    )
     fig.update_layout(
         polar=dict(
             bgcolor="#0f172a",
-            radialaxis=dict(range=[-1, 1], showticklabels=True,
-                            tickfont=dict(size=9, color="#64748b"),
-                            gridcolor="#1e293b"),
-            angularaxis=dict(tickfont=dict(size=10, color="#cbd5e1"),
-                             gridcolor="#1e293b"),
+            radialaxis=dict(
+                range=[-1, 1], showticklabels=True, tickfont=dict(size=9, color="#64748b"), gridcolor="#1e293b"
+            ),
+            angularaxis=dict(tickfont=dict(size=10, color="#cbd5e1"), gridcolor="#1e293b"),
         ),
-        height=380, margin=dict(l=60, r=60, t=40, b=40),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        height=380,
+        margin=dict(l=60, r=60, t=40, b=40),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
         showlegend=False,
-        title=dict(text=t("sector_breakdown") + " Radar",
-                   font=dict(color="#e2e8f0", size=14)),
+        title=dict(text=t("sector_breakdown") + " Radar", font=dict(color="#e2e8f0", size=14)),
     )
     return fig
 
@@ -111,32 +120,40 @@ def _sector_heatmap(sentiment: SentimentReport) -> go.Figure:
         fig.update_layout(height=200, template="plotly_dark")
         return fig
 
-    fig = go.Figure(go.Heatmap(
-        z=[scores],
-        x=names,
-        y=["Sentiment"],
-        colorscale=[
-            [0.0, "#dc2626"], [0.3, "#ef4444"],
-            [0.45, "#64748b"], [0.55, "#64748b"],
-            [0.7, "#22c55e"], [1.0, "#16a34a"],
-        ],
-        zmin=-1, zmax=1,
-        text=[[f"{s:+.2f}" for s in scores]],
-        texttemplate="%{text}",
-        textfont={"size": 11, "color": "#e2e8f0"},
-        hovertemplate="%{x}<br>Score: %{z:+.2f}<extra></extra>",
-        colorbar=dict(
-            title="Score", titlefont=dict(color="#94a3b8"),
-            tickfont=dict(color="#94a3b8"),
-        ),
-    ))
+    fig = go.Figure(
+        go.Heatmap(
+            z=[scores],
+            x=names,
+            y=["Sentiment"],
+            colorscale=[
+                [0.0, "#dc2626"],
+                [0.3, "#ef4444"],
+                [0.45, "#64748b"],
+                [0.55, "#64748b"],
+                [0.7, "#22c55e"],
+                [1.0, "#16a34a"],
+            ],
+            zmin=-1,
+            zmax=1,
+            text=[[f"{s:+.2f}" for s in scores]],
+            texttemplate="%{text}",
+            textfont={"size": 11, "color": "#e2e8f0"},
+            hovertemplate="%{x}<br>Score: %{z:+.2f}<extra></extra>",
+            colorbar=dict(
+                title="Score",
+                titlefont=dict(color="#94a3b8"),
+                tickfont=dict(color="#94a3b8"),
+            ),
+        )
+    )
     fig.update_layout(
-        height=160, margin=dict(l=10, r=10, t=30, b=10),
-        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#0f172a",
+        height=160,
+        margin=dict(l=10, r=10, t=30, b=10),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#0f172a",
         xaxis=dict(tickfont=dict(size=9, color="#94a3b8"), tickangle=-45),
         yaxis=dict(showticklabels=False),
-        title=dict(text="Sector Sentiment Heatmap",
-                   font=dict(color="#e2e8f0", size=14)),
+        title=dict(text="Sector Sentiment Heatmap", font=dict(color="#e2e8f0", size=14)),
     )
     return fig
 
@@ -156,15 +173,15 @@ def render_asset_card(a) -> str:
         f'<div class="asset-card">'
         f'<div class="asset-name">{emoji} {name_esc} &mdash; {label} '
         f'<span style="float:right;font-size:14px;">score '
-        f'<code>{a.score:+.2f}</code></span></div>'
+        f"<code>{a.score:+.2f}</code></span></div>"
         f'<div class="asset-meta">'
-        f'{t("col_price")}: <b>{a.price:.2f}</b> &nbsp;|&nbsp; '
+        f"{t('col_price')}: <b>{a.price:.2f}</b> &nbsp;|&nbsp; "
         f'1D: <span class="{day_cls}"><b>{a.change_1d_pct:+.1f}%</b></span> '
-        f'&nbsp;|&nbsp; '
+        f"&nbsp;|&nbsp; "
         f'5D: <span class="{week_cls}"><b>{a.change_5d_pct:+.1f}%</b></span>'
-        f'</div>'
+        f"</div>"
         f'<div class="asset-reason">{reason_esc}</div>'
-        f'</div>'
+        f"</div>"
     )
 
 
@@ -176,8 +193,7 @@ def render_sentiment_tab() -> None:
     # Manual refresh button + last-updated timestamp
     ctrl_col1, ctrl_col2 = st.columns([1, 3])
     with ctrl_col1:
-        refresh_clicked = st.button(t("refresh_data"), key="refresh_sentiment",
-                                    use_container_width=True)
+        refresh_clicked = st.button(t("refresh_data"), key="refresh_sentiment", use_container_width=True)
     with ctrl_col2:
         last_ts = st.session_state.get("sentiment_last_updated")
         if last_ts:
@@ -204,8 +220,7 @@ def render_sentiment_tab() -> None:
     gauge_col, stats_col, vix_col = st.columns([2, 1, 1])
 
     with gauge_col:
-        st.plotly_chart(_sentiment_gauge(sentiment.overall_score),
-                        use_container_width=True, key="gauge_chart")
+        st.plotly_chart(_sentiment_gauge(sentiment.overall_score), use_container_width=True, key="gauge_chart")
 
     with stats_col:
         st.metric(t("bullish"), sentiment.bull_count)
@@ -224,12 +239,12 @@ def render_sentiment_tab() -> None:
         st.markdown(
             f'<div class="sentiment-bar">'
             f'<div style="width:{bull_pct}%; background:linear-gradient(90deg,#16a34a,#22c55e);">'
-            f'{bull_pct:.0f}% {t("bull_label")}</div>'
+            f"{bull_pct:.0f}% {t('bull_label')}</div>"
             f'<div style="width:{neutral_pct}%; background:linear-gradient(90deg,#4b5563,#6b7280);">'
-            f'{neutral_pct:.0f}% {t("neutral_label")}</div>'
+            f"{neutral_pct:.0f}% {t('neutral_label')}</div>"
             f'<div style="width:{bear_pct}%; background:linear-gradient(90deg,#ef4444,#dc2626);">'
-            f'{bear_pct:.0f}% {t("bear_label")}</div>'
-            f'</div>',
+            f"{bear_pct:.0f}% {t('bear_label')}</div>"
+            f"</div>",
             unsafe_allow_html=True,
         )
 
@@ -237,11 +252,9 @@ def render_sentiment_tab() -> None:
     st.markdown("---")
     radar_col, heat_col = st.columns(2)
     with radar_col:
-        st.plotly_chart(_sector_radar(sentiment), use_container_width=True,
-                        key="radar_chart")
+        st.plotly_chart(_sector_radar(sentiment), use_container_width=True, key="radar_chart")
     with heat_col:
-        st.plotly_chart(_sector_heatmap(sentiment), use_container_width=True,
-                        key="heatmap_chart")
+        st.plotly_chart(_sector_heatmap(sentiment), use_container_width=True, key="heatmap_chart")
 
     # -- Opportunities & Risks --
     st.markdown("---")
@@ -278,16 +291,18 @@ def render_sentiment_tab() -> None:
             if sector.assets:
                 rows: list[dict[str, str]] = []
                 for a in sorted(sector.assets, key=lambda x: x.score, reverse=True):
-                    rows.append({
-                        t("col_signal"): f"{SIGNAL_EMOJI.get(a.signal, '')} {sig_label(a.signal)}",
-                        t("col_asset"): a.name,
-                        t("col_price"): f"{a.price:.2f}",
-                        "1D %": f"{a.change_1d_pct:+.1f}%",
-                        "5D %": f"{a.change_5d_pct:+.1f}%",
-                        "20D %": f"{a.change_20d_pct:+.1f}%",
-                        t("col_ma20"): t("col_above") if a.above_ma20 else t("col_below"),
-                        t("col_vol_ratio"): f"{a.volume_ratio:.1f}x",
-                        t("col_score"): f"{a.score:+.2f}",
-                        t("col_reason"): a.reason,
-                    })
+                    rows.append(
+                        {
+                            t("col_signal"): f"{SIGNAL_EMOJI.get(a.signal, '')} {sig_label(a.signal)}",
+                            t("col_asset"): a.name,
+                            t("col_price"): f"{a.price:.2f}",
+                            "1D %": f"{a.change_1d_pct:+.1f}%",
+                            "5D %": f"{a.change_5d_pct:+.1f}%",
+                            "20D %": f"{a.change_20d_pct:+.1f}%",
+                            t("col_ma20"): t("col_above") if a.above_ma20 else t("col_below"),
+                            t("col_vol_ratio"): f"{a.volume_ratio:.1f}x",
+                            t("col_score"): f"{a.score:+.2f}",
+                            t("col_reason"): a.reason,
+                        }
+                    )
                 st.dataframe(rows, use_container_width=True, hide_index=True)

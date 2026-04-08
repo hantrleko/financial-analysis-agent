@@ -13,7 +13,6 @@ I18N = {
     "app_title": {"en": "🏦 Automated Financial Analysis System", "zh": "🏦 自动化金融分析系统"},
     "password_prompt": {"en": "🔒 Please enter access password", "zh": "🔒 请输入访问密码"},
     "wrong_password": {"en": "Wrong password.", "zh": "密码错误。"},
-
     # 侧边栏
     "sidebar_controls": {"en": "⚙️ Controls", "zh": "⚙️ 控制面板"},
     "search_query": {"en": "Search Query", "zh": "搜索关键词"},
@@ -78,28 +77,27 @@ I18N = {
     },
     "run_analysis": {"en": "🚀 Run Analysis", "zh": "🚀 开始分析"},
     "update_log": {"en": "📋 Update Log", "zh": "📋 更新日志"},
-
     # 时间范围选项
     "time_24h": {"en": "Past 24 Hours", "zh": "过去 24 小时"},
     "time_week": {"en": "Past Week", "zh": "过去一周"},
     "time_month": {"en": "Past Month", "zh": "过去一月"},
-
     # 简报长度选项
     "length_short": {"en": "Short (~200 words)", "zh": "简短（~200 词）"},
     "length_medium": {"en": "Medium (~400 words)", "zh": "中等（~400 词）"},
     "length_detailed": {"en": "Detailed (~800 words)", "zh": "详细（~800 词）"},
-
     # 标签页
     "tab_analysis": {"en": "📊 Analysis", "zh": "📊 分析"},
     "tab_sentiment": {"en": "🧭 Market Sentiment", "zh": "🧭 市场情绪"},
     "tab_charts": {"en": "📈 Market Charts", "zh": "📈 行情图表"},
     "tab_history": {"en": "📜 History", "zh": "📜 历史记录"},
-
     # Analysis Tab
     "collecting_news": {"en": "Collecting news...", "zh": "正在采集新闻…"},
     "no_news": {"en": "No news articles found. Try a different query.", "zh": "未找到新闻，请尝试其他关键词。"},
     "scraping_content": {"en": "Scraping full article content...", "zh": "正在抓取文章全文…"},
-    "scraped_count": {"en": "📄 Scraped full content for {scraped}/{total} articles", "zh": "📄 已抓取 {scraped}/{total} 篇文章全文"},
+    "scraped_count": {
+        "en": "📄 Scraped full content for {scraped}/{total} articles",
+        "zh": "📄 已抓取 {scraped}/{total} 篇文章全文",
+    },
     "collected_news": {"en": "📰 Collected News ({count} articles)", "zh": "📰 已采集新闻（{count} 篇）"},
     "chars_scraped": {"en": "{n} chars of full content scraped", "zh": "已抓取 {n} 字全文"},
     "analysis_report": {"en": "📝 Analysis Report", "zh": "📝 分析报告"},
@@ -109,17 +107,21 @@ I18N = {
     "generating_pdf": {"en": "Generating PDF...", "zh": "正在生成 PDF…"},
     "download_pdf": {"en": "⬇️ Download PDF", "zh": "⬇️ 下载 PDF"},
     "saving_history": {"en": "Saving to history...", "zh": "正在保存历史记录…"},
-    "analysis_complete": {"en": "Analysis complete! Run saved as **{run_id}**", "zh": "分析完成！已保存为 **{run_id}**"},
+    "analysis_complete": {
+        "en": "Analysis complete! Run saved as **{run_id}**",
+        "zh": "分析完成！已保存为 **{run_id}**",
+    },
     "error_occurred": {"en": "An error occurred: {e}", "zh": "发生错误：{e}"},
-    "cached_result": {"en": "Showing cached result from run **{run_id}**", "zh": "显示上次运行 **{run_id}** 的缓存结果"},
-
+    "cached_result": {
+        "en": "Showing cached result from run **{run_id}**",
+        "zh": "显示上次运行 **{run_id}** 的缓存结果",
+    },
     # Progress steps
     "step_collect": {"en": "Step 1/5: Collecting news", "zh": "步骤 1/5：采集新闻"},
     "step_scrape": {"en": "Step 2/5: Scraping full articles", "zh": "步骤 2/5：抓取文章全文"},
     "step_analyze": {"en": "Step 3/5: AI analysis in progress", "zh": "步骤 3/5：AI 分析中"},
     "step_media": {"en": "Step 4/5: Generating media", "zh": "步骤 4/5：生成媒体文件"},
     "step_save": {"en": "Step 5/5: Saving results", "zh": "步骤 5/5：保存结果"},
-
     # Sidebar presets
     "preset_label": {"en": "Quick Presets", "zh": "快速预设"},
     "preset_quick": {"en": "⚡ Quick Briefing", "zh": "⚡ 快速简报"},
@@ -128,7 +130,6 @@ I18N = {
     "preset_custom": {"en": "🔧 Custom", "zh": "🔧 自定义"},
     "basic_settings": {"en": "📋 Basic Settings", "zh": "📋 基础设置"},
     "advanced_settings": {"en": "🔧 Advanced Settings", "zh": "🔧 高级设置"},
-
     # Sentiment Tab
     "sentiment_title": {"en": "🧭 Market Sentiment Dashboard", "zh": "🧭 市场情绪仪表盘"},
     "sentiment_caption": {
@@ -136,7 +137,10 @@ I18N = {
         "zh": "全球资产多因子实时情绪分析。数据每 5 分钟自动刷新。",
     },
     "analyzing_sentiment": {"en": "Analyzing market sentiment...", "zh": "正在分析市场情绪…"},
-    "sentiment_unavailable": {"en": "Unable to fetch market data. Please try again later.", "zh": "无法获取市场数据，请稍后重试。"},
+    "sentiment_unavailable": {
+        "en": "Unable to fetch market data. Please try again later.",
+        "zh": "无法获取市场数据，请稍后重试。",
+    },
     "overall_sentiment": {"en": "Overall Sentiment", "zh": "整体情绪"},
     "bullish": {"en": "🟢 Bullish", "zh": "🟢 看多"},
     "bearish": {"en": "🔴 Bearish", "zh": "🔴 看空"},
@@ -159,9 +163,11 @@ I18N = {
     "col_reason": {"en": "Reason", "zh": "依据"},
     "refresh_data": {"en": "🔄 Refresh Data", "zh": "🔄 刷新数据"},
     "last_updated": {"en": "Last updated: {time}", "zh": "上次更新：{time}"},
-    "click_refresh": {"en": "Click \"Refresh Data\" to load market sentiment.", "zh": "点击「刷新数据」加载市场情绪。"},
-    "click_refresh_charts": {"en": "Click \"Refresh Data\" to load market charts.", "zh": "点击「刷新数据」加载行情图表。"},
-
+    "click_refresh": {"en": 'Click "Refresh Data" to load market sentiment.', "zh": "点击「刷新数据」加载市场情绪。"},
+    "click_refresh_charts": {
+        "en": 'Click "Refresh Data" to load market charts.',
+        "zh": "点击「刷新数据」加载行情图表。",
+    },
     # Charts Tab
     "charts_title": {"en": "📈 Asset Price Trends", "zh": "📈 资产价格走势"},
     "charts_caption": {
@@ -172,21 +178,22 @@ I18N = {
     "period": {"en": "Period", "zh": "时间段"},
     "loading_market": {"en": "Loading market data...", "zh": "正在加载行情数据…"},
     "select_group": {"en": "Please select at least one asset group.", "zh": "请至少选择一个资产类别。"},
-
     # Charts period options
     "period_1w": {"en": "1 Week", "zh": "1 周"},
     "period_1m": {"en": "1 Month", "zh": "1 个月"},
     "period_3m": {"en": "3 Months", "zh": "3 个月"},
     "period_6m": {"en": "6 Months", "zh": "6 个月"},
     "period_1y": {"en": "1 Year", "zh": "1 年"},
-
     # History Tab
     "search_keyword": {"en": "🔍 Search keyword", "zh": "🔍 搜索关键词"},
     "search_placeholder": {"en": "Search in query or report...", "zh": "搜索查询或报告内容…"},
     "date_from": {"en": "From", "zh": "起始日期"},
     "date_to": {"en": "To", "zh": "结束日期"},
     "found_records": {"en": "Found {n} matching records", "zh": "找到 {n} 条匹配记录"},
-    "no_history": {"en": "No history yet. Run an analysis to get started!", "zh": "暂无历史记录。运行一次分析即可开始！"},
+    "no_history": {
+        "en": "No history yet. Run an analysis to get started!",
+        "zh": "暂无历史记录。运行一次分析即可开始！",
+    },
     "view_details": {"en": "View details", "zh": "查看详情"},
     "no_report": {"en": "*No report available*", "zh": "*无报告*"},
     "load_failed": {"en": "Could not load run details.", "zh": "无法加载运行详情。"},
@@ -199,12 +206,10 @@ I18N = {
     "compare_left": {"en": "Report A", "zh": "报告 A"},
     "compare_right": {"en": "Report B", "zh": "报告 B"},
     "no_diff": {"en": "Reports are identical.", "zh": "两份报告内容相同。"},
-
     # Newspaper themes
     "newspaper_theme": {"en": "Newspaper Theme", "zh": "报纸主题"},
     "theme_classic": {"en": "📜 Classic", "zh": "📜 经典"},
     "theme_modern": {"en": "✨ Modern", "zh": "✨ 现代"},
-
     # Charts enhancements
     "chart_type": {"en": "Chart Type", "zh": "图表类型"},
     "chart_line": {"en": "Line Chart", "zh": "折线图"},
@@ -214,7 +219,6 @@ I18N = {
     "custom_date_range": {"en": "Custom Date Range", "zh": "自定义日期范围"},
     "date_start": {"en": "Start Date", "zh": "开始日期"},
     "date_end": {"en": "End Date", "zh": "结束日期"},
-
     # News display enhancements
     "news_group_by": {"en": "Group by", "zh": "分组方式"},
     "group_none": {"en": "No Grouping", "zh": "不分组"},
@@ -222,7 +226,6 @@ I18N = {
     "sentiment_positive": {"en": "🟢 Positive", "zh": "🟢 正面"},
     "sentiment_negative": {"en": "🔴 Negative", "zh": "🔴 负面"},
     "sentiment_neutral_tag": {"en": "⚪ Neutral", "zh": "⚪ 中性"},
-
     # 通用标签
     "query_label": {"en": "Query", "zh": "查询"},
     "sources_label": {"en": "Sources", "zh": "来源"},

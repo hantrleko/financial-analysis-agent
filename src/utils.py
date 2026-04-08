@@ -21,6 +21,7 @@ def get_api_key(env_key: str) -> str:
         return val
     try:
         import streamlit as st
+
         return st.secrets.get(env_key, "")
     except Exception:
         return ""
@@ -32,6 +33,7 @@ def get_proxy() -> dict | None:
     if not proxy:
         try:
             import streamlit as st
+
             proxy = st.secrets.get("GEMINI_PROXY", "")
         except Exception:
             pass
@@ -42,8 +44,12 @@ def get_proxy() -> dict | None:
     return None
 
 
-def retry_api_call(func, max_retries: int | None = None, base_delay: float | None = None,
-                   retryable_status_codes: tuple = (429, 500, 502, 503, 504)):
+def retry_api_call(
+    func,
+    max_retries: int | None = None,
+    base_delay: float | None = None,
+    retryable_status_codes: tuple = (429, 500, 502, 503, 504),
+):
     """
     带指数退避的 API 调用重试装饰器。
     区分可重试错误（429、5xx、timeout）和不可重试错误（401、403 等）。
@@ -53,6 +59,7 @@ def retry_api_call(func, max_retries: int | None = None, base_delay: float | Non
         result = retry_api_call(lambda: requests.post(url, json=payload, timeout=60))
     """
     from src.config import API_MAX_RETRIES, API_RETRY_BASE_DELAY
+
     if max_retries is None:
         max_retries = API_MAX_RETRIES
     if base_delay is None:
@@ -63,30 +70,33 @@ def retry_api_call(func, max_retries: int | None = None, base_delay: float | Non
     for attempt in range(max_retries):
         try:
             resp = func()
-            if hasattr(resp, 'status_code'):
+            if hasattr(resp, "status_code"):
                 if resp.status_code < 400:
                     return resp
                 if resp.status_code in retryable_status_codes:
                     logger.warning(
                         "Retryable HTTP %d on attempt %d/%d",
-                        resp.status_code, attempt + 1, max_retries,
+                        resp.status_code,
+                        attempt + 1,
+                        max_retries,
                     )
                     if attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt)
+                        delay = base_delay * (2**attempt)
                         time.sleep(delay)
                         continue
                 # Non-retryable status or last attempt — return as-is
                 return resp
             return resp
-        except (http_requests.exceptions.Timeout,
-                http_requests.exceptions.ConnectionError) as e:
+        except (http_requests.exceptions.Timeout, http_requests.exceptions.ConnectionError) as e:
             last_exception = e
             logger.warning(
                 "Network error on attempt %d/%d: %s",
-                attempt + 1, max_retries, e,
+                attempt + 1,
+                max_retries,
+                e,
             )
             if attempt < max_retries - 1:
-                delay = base_delay * (2 ** attempt)
+                delay = base_delay * (2**attempt)
                 time.sleep(delay)
         except Exception:
             # Non-retryable exception — raise immediately

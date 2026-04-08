@@ -13,10 +13,13 @@ def test_create_price_chart_empty():
 
 def test_create_price_chart_with_data():
     dates = pd.date_range("2026-01-01", periods=5)
-    df = pd.DataFrame({
-        "SPY": [400, 405, 410, 408, 412],
-        "QQQ": [300, 305, 302, 310, 315],
-    }, index=dates)
+    df = pd.DataFrame(
+        {
+            "SPY": [400, 405, 410, 408, 412],
+            "QQQ": [300, 305, 302, 310, 315],
+        },
+        index=dates,
+    )
     fig = create_price_chart(df, title="Test")
     assert fig is not None
     assert len(fig.data) == 2

@@ -26,11 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 class NewsCollector:
-
-    def fetch_news(self, query: str = "financial markets trends", count: int = 10,
-                   sources: list[str] | None = None,
-                   time_range: str = "24h", ai_search: bool = False,
-                   **kwargs: object) -> list[dict[str, object]]:
+    def fetch_news(
+        self,
+        query: str = "financial markets trends",
+        count: int = 10,
+        sources: list[str] | None = None,
+        time_range: str = "24h",
+        ai_search: bool = False,
+        **kwargs: object,
+    ) -> list[dict[str, object]]:
         """
         获取新闻。
         ai_search=True: 先用 Gemini Search Grounding 联网搜索，再用 RSS 补充
@@ -65,8 +69,9 @@ class NewsCollector:
                 return True
         return False
 
-    def _fetch_rss(self, count: int = 10, time_range: str = "24h",
-                   sources: list[str] | None = None) -> list[dict[str, object]]:
+    def _fetch_rss(
+        self, count: int = 10, time_range: str = "24h", sources: list[str] | None = None
+    ) -> list[dict[str, object]]:
         """从多个 RSS 源聚合新闻，按时间过滤、去重后取 top N。"""
         import feedparser
 
@@ -83,9 +88,10 @@ class NewsCollector:
             for attempt in range(2):
                 try:
                     logger.info("Fetching RSS from: %s (attempt %d)...", feed_info["source"], attempt + 1)
-                    feed = feedparser.parse(feed_info["url"], request_headers={
-                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                    })
+                    feed = feedparser.parse(
+                        feed_info["url"],
+                        request_headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                    )
                     if feed.bozo and not feed.entries:
                         raise Exception(f"Feed parse error: {feed.bozo_exception}")
                     for entry in feed.entries[:count]:
@@ -99,14 +105,16 @@ class NewsCollector:
                             except Exception:
                                 pass  # 解析失败则保留
 
-                        all_items.append({
-                            "title": entry.get("title", "No Title"),
-                            "url": entry.get("link", ""),
-                            "description": entry.get("summary", entry.get("title", "")),
-                            "source": feed_info["source"],
-                            "published_age": published_str or "Unknown",
-                            "fetched_at": datetime.now().isoformat(),
-                        })
+                        all_items.append(
+                            {
+                                "title": entry.get("title", "No Title"),
+                                "url": entry.get("link", ""),
+                                "description": entry.get("summary", entry.get("title", "")),
+                                "source": feed_info["source"],
+                                "published_age": published_str or "Unknown",
+                                "fetched_at": datetime.now().isoformat(),
+                            }
+                        )
                     logger.info("  %s: %d articles", feed_info["source"], min(len(feed.entries), count))
                     break  # success, no retry
                 except Exception as e:
@@ -122,8 +130,7 @@ class NewsCollector:
         logger.info("Successfully fetched %d unique articles from %d RSS sources.", len(result), len(RSS_FEEDS))
         return result
 
-    def _fetch_google_news_rss(self, query: str, count: int = 10,
-                               time_range: str = "24h") -> list[dict[str, object]]:
+    def _fetch_google_news_rss(self, query: str, count: int = 10, time_range: str = "24h") -> list[dict[str, object]]:
         """通过 Google News RSS 按 query 动态搜索新闻。中文 query 自动附加英文关键词。"""
         import re
         from urllib.parse import quote_plus
@@ -131,7 +138,7 @@ class NewsCollector:
         import feedparser
 
         # 如果 query 包含中文，附加英文金融关键词以提升 Google News 命中率
-        has_chinese = bool(re.search(r'[\u4e00-\u9fff]', query))
+        has_chinese = bool(re.search(r"[\u4e00-\u9fff]", query))
         search_query = f"{query} financial markets news" if has_chinese else query
 
         gn_time = GOOGLE_NEWS_TIME_MAP.get(time_range, "1d")
@@ -139,19 +146,21 @@ class NewsCollector:
         logger.info("Fetching Google News RSS for query: %s", search_query)
 
         try:
-            feed = feedparser.parse(url, request_headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            })
+            feed = feedparser.parse(
+                url, request_headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            )
             items = []
             for entry in feed.entries[:count]:
-                items.append({
-                    "title": entry.get("title", "No Title"),
-                    "url": entry.get("link", ""),
-                    "description": entry.get("summary", entry.get("title", "")),
-                    "source": "Google News",
-                    "published_age": entry.get("published", "Unknown"),
-                    "fetched_at": datetime.now().isoformat(),
-                })
+                items.append(
+                    {
+                        "title": entry.get("title", "No Title"),
+                        "url": entry.get("link", ""),
+                        "description": entry.get("summary", entry.get("title", "")),
+                        "source": "Google News",
+                        "published_age": entry.get("published", "Unknown"),
+                        "fetched_at": datetime.now().isoformat(),
+                    }
+                )
             logger.info("Google News RSS returned %d articles.", len(items))
             return items
         except Exception as e:
@@ -169,10 +178,7 @@ class NewsCollector:
             if url and url in seen_urls:
                 continue
             title = item["title"].strip().lower()
-            is_dup = any(
-                SequenceMatcher(None, title, t).ratio() >= DEDUP_SIMILARITY_THRESHOLD
-                for t in seen_titles
-            )
+            is_dup = any(SequenceMatcher(None, title, t).ratio() >= DEDUP_SIMILARITY_THRESHOLD for t in seen_titles)
             if is_dup:
                 continue
             if url:
@@ -181,8 +187,7 @@ class NewsCollector:
             unique_items.append(item)
         return unique_items[:count]
 
-    def _fetch_gemini_search(self, query: str, count: int,
-                             time_range: str) -> list[dict[str, object]]:
+    def _fetch_gemini_search(self, query: str, count: int, time_range: str) -> list[dict[str, object]]:
         """用 Gemini Search Grounding 联网搜索最新金融新闻。"""
         import requests as http_requests
 
@@ -223,9 +228,7 @@ class NewsCollector:
         try:
             logger.info("Fetching news via Gemini Search Grounding...")
             proxies = get_proxy()
-            resp = retry_api_call(
-                lambda: http_requests.post(url, json=payload, timeout=60, proxies=proxies)
-            )
+            resp = retry_api_call(lambda: http_requests.post(url, json=payload, timeout=60, proxies=proxies))
             if resp.status_code != 200:
                 logger.error("Gemini Search API error %d: %s", resp.status_code, resp.text[:500])
             resp.raise_for_status()
@@ -252,14 +255,16 @@ class NewsCollector:
                     elif line.upper().startswith("SUMMARY:"):
                         summary = line[8:].strip()
                 if title:
-                    news_items.append({
-                        "title": title,
-                        "url": "",
-                        "description": summary or title,
-                        "source": f"🔍 {source}" if source else "🔍 Gemini Search",
-                        "published_age": "Recent",
-                        "fetched_at": datetime.now().isoformat(),
-                    })
+                    news_items.append(
+                        {
+                            "title": title,
+                            "url": "",
+                            "description": summary or title,
+                            "source": f"🔍 {source}" if source else "🔍 Gemini Search",
+                            "published_age": "Recent",
+                            "fetched_at": datetime.now().isoformat(),
+                        }
+                    )
 
             # 用 grounding chunks 的 URL 补充
             for i, chunk in enumerate(chunks):
@@ -284,7 +289,7 @@ class NewsCollector:
                 "description": "Technology shares surged driven by strong earnings from major AI chipmakers.",
                 "source": "MockNews",
                 "published_age": "2 hours ago",
-                "fetched_at": datetime.now().isoformat()
+                "fetched_at": datetime.now().isoformat(),
             },
             {
                 "title": "Mock: Fed Signals Potential Rate Cut",
@@ -292,8 +297,8 @@ class NewsCollector:
                 "description": "Federal Reserve officials hinted at a possible interest rate reduction later this year.",
                 "source": "MockFinance",
                 "published_age": "5 hours ago",
-                "fetched_at": datetime.now().isoformat()
-            }
+                "fetched_at": datetime.now().isoformat(),
+            },
         ]
 
     def scrape_content(self, url: str, timeout: int = SCRAPE_TIMEOUT) -> str:
@@ -309,6 +314,7 @@ class NewsCollector:
         # trafilatura 提取
         try:
             import trafilatura
+
             downloaded = trafilatura.fetch_url(url)
             if downloaded:
                 text = trafilatura.extract(
@@ -326,9 +332,12 @@ class NewsCollector:
         try:
             import requests
             from bs4 import BeautifulSoup
-            resp = requests.get(url, timeout=timeout, headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            })
+
+            resp = requests.get(
+                url,
+                timeout=timeout,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+            )
             resp.raise_for_status()
             soup = BeautifulSoup(resp.text, "html.parser")
 
@@ -346,11 +355,13 @@ class NewsCollector:
 
         return ""
 
-    def enrich_with_content(self, news_items: list[dict[str, object]],
-                            max_scrape: int = MAX_SCRAPE_ARTICLES) -> list[dict[str, object]]:
+    def enrich_with_content(
+        self, news_items: list[dict[str, object]], max_scrape: int = MAX_SCRAPE_ARTICLES
+    ) -> list[dict[str, object]]:
         """为新闻列表并行抓取正文内容，添加 full_content 字段。"""
         to_scrape = [
-            (i, item) for i, item in enumerate(news_items[:max_scrape])
+            (i, item)
+            for i, item in enumerate(news_items[:max_scrape])
             if item.get("url", "").startswith("http") and not item.get("full_content")
         ]
         total = len(to_scrape)
@@ -377,8 +388,7 @@ class NewsCollector:
 
         return news_items
 
-    def save_news(self, news_items: list[dict[str, object]],
-                  filename: str = "data/raw_news.json") -> None:
+    def save_news(self, news_items: list[dict[str, object]], filename: str = "data/raw_news.json") -> None:
         """保存新闻数据到 JSON 文件。"""
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         with open(filename, "w", encoding="utf-8") as f:

@@ -26,10 +26,17 @@ class HistoryManager:
             suffix += 1
         return run_id
 
-    def save_run(self, news_items: list[dict], report: str, query: str = "",
-                 sources: list[str] | None = None, time_range: str = "",
-                 briefing_length: str = "", audio_file: str | None = None,
-                 pdf_file: str | None = None) -> str:
+    def save_run(
+        self,
+        news_items: list[dict],
+        report: str,
+        query: str = "",
+        sources: list[str] | None = None,
+        time_range: str = "",
+        briefing_length: str = "",
+        audio_file: str | None = None,
+        pdf_file: str | None = None,
+    ) -> str:
         """
         保存一次运行的所有结果到带时间戳的目录。
         返回 run_id（时间戳字符串）。
@@ -140,9 +147,9 @@ class HistoryManager:
             return True
         return False
 
-    def search_runs(self, keyword: str | None = None,
-                    date_from: str | datetime | None = None,
-                    date_to: str | datetime | None = None) -> list[dict]:
+    def search_runs(
+        self, keyword: str | None = None, date_from: str | datetime | None = None, date_to: str | datetime | None = None
+    ) -> list[dict]:
         """
         搜索/过滤历史记录。
         keyword: 在 query 和 report 中搜索关键词（不区分大小写）
@@ -174,9 +181,7 @@ class HistoryManager:
                     results.append(meta)
                     continue
                 # Keyword not in query — check report content
-                report_path = os.path.join(
-                    self.history_dir, meta["run_id"], "report.md"
-                )
+                report_path = os.path.join(self.history_dir, meta["run_id"], "report.md")
                 if os.path.exists(report_path):
                     with open(report_path, "r", encoding="utf-8") as f:
                         report_text = f.read()

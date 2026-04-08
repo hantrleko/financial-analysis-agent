@@ -60,19 +60,19 @@ LANGUAGE_MODELS = {
 # Emoji / symbol regex: covers supplementary planes, dingbats, misc symbols,
 # en-dash, em-dash, smart quotes, and other chars outside Latin-1.
 _EMOJI_RE = re.compile(
-    r'[\U00010000-\U0010ffff]'   # Supplementary planes (emoji etc.)
-    r'|[\u2600-\u27BF]'          # Misc symbols, dingbats
-    r'|[\uFE00-\uFE0F]'          # Variation selectors
-    r'|[\u2700-\u27BF]'          # Dingbats
-    r'|[\u2300-\u23FF]'          # Misc technical
-    r'|[\u200D]'                 # Zero-width joiner
-    r'|[\u20E3]'                 # Combining enclosing keycap
-    r'|[\u2640-\u2642]'          # Gender symbols
-    r'|[\u2194-\u21AA]'          # Arrows
-    r'|[\u2010-\u2015]'          # Dashes (incl. en-dash, em-dash)
-    r'|[\u2018-\u201F]'          # Smart quotes
-    r'|[\u2026]'                 # Ellipsis
-    r'|[\u2022]'                 # Bullet
+    r"[\U00010000-\U0010ffff]"  # Supplementary planes (emoji etc.)
+    r"|[\u2600-\u27BF]"  # Misc symbols, dingbats
+    r"|[\uFE00-\uFE0F]"  # Variation selectors
+    r"|[\u2700-\u27BF]"  # Dingbats
+    r"|[\u2300-\u23FF]"  # Misc technical
+    r"|[\u200D]"  # Zero-width joiner
+    r"|[\u20E3]"  # Combining enclosing keycap
+    r"|[\u2640-\u2642]"  # Gender symbols
+    r"|[\u2194-\u21AA]"  # Arrows
+    r"|[\u2010-\u2015]"  # Dashes (incl. en-dash, em-dash)
+    r"|[\u2018-\u201F]"  # Smart quotes
+    r"|[\u2026]"  # Ellipsis
+    r"|[\u2022]"  # Bullet
 )
 
 
@@ -115,9 +115,14 @@ class MediaGenerator:
     # TTS
     # ------------------------------------------------------------------
 
-    def generate_audio(self, text: str, output_file: str = "data/daily_briefing.mp3",
-                       language: str = "en", voice_name: str | None = None,
-                       tts_engine: str = "elevenlabs") -> str | None:
+    def generate_audio(
+        self,
+        text: str,
+        output_file: str = "data/daily_briefing.mp3",
+        language: str = "en",
+        voice_name: str | None = None,
+        tts_engine: str = "elevenlabs",
+    ) -> str | None:
         """
         生成音频。支持 ElevenLabs 和 Edge TTS 两种引擎。
         tts_engine: "elevenlabs" 或 "edge_tts"。
@@ -143,8 +148,9 @@ class MediaGenerator:
 
         model_id = LANGUAGE_MODELS.get(language, "eleven_monolingual_v1")
 
-        logger.info("Generating audio (lang=%s, voice=%s, model=%s, chunks=%d)...",
-                     language, voice_name, model_id, len(chunks))
+        logger.info(
+            "Generating audio (lang=%s, voice=%s, model=%s, chunks=%d)...", language, voice_name, model_id, len(chunks)
+        )
 
         try:
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -204,8 +210,13 @@ class MediaGenerator:
             logger.error("Error generating audio: %s", e)
             return None
 
-    def generate_audio_edge(self, text: str, output_file: str = "data/daily_briefing.mp3",
-                            language: str = "en", voice_name: str | None = None) -> str | None:
+    def generate_audio_edge(
+        self,
+        text: str,
+        output_file: str = "data/daily_briefing.mp3",
+        language: str = "en",
+        voice_name: str | None = None,
+    ) -> str | None:
         """
         使用 Edge TTS 生成音频（免费，中文效果极佳）。
         language: "en" 或 "zh"，决定默认语音。
@@ -226,8 +237,7 @@ class MediaGenerator:
         else:
             voice = list(presets.values())[0]
 
-        logger.info("Generating audio with Edge TTS (lang=%s, voice=%s, chunks=%d)...",
-                     language, voice, len(chunks))
+        logger.info("Generating audio with Edge TTS (lang=%s, voice=%s, chunks=%d)...", language, voice, len(chunks))
 
         try:
             os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -240,6 +250,7 @@ class MediaGenerator:
 
             if loop and loop.is_running():
                 import nest_asyncio
+
                 nest_asyncio.apply()
 
             def _run_async(coro):
@@ -276,8 +287,13 @@ class MediaGenerator:
     # PDF
     # ------------------------------------------------------------------
 
-    def generate_pdf(self, report_text: str, output_file: str = "data/daily_briefing.pdf",
-                     language: str = "en", title: str = "Financial Analysis Briefing") -> str | None:
+    def generate_pdf(
+        self,
+        report_text: str,
+        output_file: str = "data/daily_briefing.pdf",
+        language: str = "en",
+        title: str = "Financial Analysis Briefing",
+    ) -> str | None:
         """
         将分析报告导出为 PDF，支持中英文。
         增强：封面页 + 目录 + 页眉页脚 + 页码。
@@ -308,12 +324,10 @@ class MediaGenerator:
             pdf.cell(0, 14, self._strip_emoji(title), new_x="LMARGIN", new_y="NEXT", align="C")
             pdf.ln(8)
             pdf.set_font(font_name, "", 14)
-            pdf.cell(0, 10, datetime.now().strftime("%Y-%m-%d %H:%M"),
-                     new_x="LMARGIN", new_y="NEXT", align="C")
+            pdf.cell(0, 10, datetime.now().strftime("%Y-%m-%d %H:%M"), new_x="LMARGIN", new_y="NEXT", align="C")
             pdf.ln(4)
             pdf.set_font(font_name, "", 11)
-            pdf.cell(0, 8, f"Version {VERSION}",
-                     new_x="LMARGIN", new_y="NEXT", align="C")
+            pdf.cell(0, 8, f"Version {VERSION}", new_x="LMARGIN", new_y="NEXT", align="C")
             pdf.ln(30)
             # Horizontal rule
             x = pdf.get_x()
@@ -341,8 +355,7 @@ class MediaGenerator:
                     indent = (level - 1) * 8
                     pdf.cell(indent)
                     prefix = "• " if level > 1 else ""
-                    pdf.cell(0, 7, f"{prefix}{self._strip_emoji(heading)}",
-                             new_x="LMARGIN", new_y="NEXT")
+                    pdf.cell(0, 7, f"{prefix}{self._strip_emoji(heading)}", new_x="LMARGIN", new_y="NEXT")
 
             # ===== Content pages =====
             pdf.add_page()
@@ -430,8 +443,8 @@ class MediaGenerator:
                 pdf.multi_cell(0, 6, "- " + self._strip_md(stripped[2:]))
                 pdf.ln(1)
             # 编号列表 (1. 2. 3. ...)
-            elif re.match(r'^(\d+)\.\s', stripped):
-                m = re.match(r'^(\d+)\.\s(.*)', stripped)
+            elif re.match(r"^(\d+)\.\s", stripped):
+                m = re.match(r"^(\d+)\.\s(.*)", stripped)
                 pdf.set_font(font_name, "", 11)
                 pdf.cell(6)
                 pdf.multi_cell(0, 6, f"{m.group(1)}. " + self._strip_md(m.group(2)))
@@ -468,7 +481,7 @@ class MediaGenerator:
         for line in table_lines:
             cells = [c.strip() for c in line.strip("|").split("|")]
             # 跳过分隔行 (--- | ---)
-            if all(re.match(r'^[-:]+$', c) for c in cells):
+            if all(re.match(r"^[-:]+$", c) for c in cells):
                 continue
             rows.append(cells)
 
@@ -496,18 +509,18 @@ class MediaGenerator:
     @staticmethod
     def _strip_emoji(text: str) -> str:
         """Remove emoji and special symbols that common PDF fonts cannot render."""
-        return _EMOJI_RE.sub('', text)
+        return _EMOJI_RE.sub("", text)
 
     @staticmethod
     def _strip_md(text: str) -> str:
         """去除 Markdown 格式符号 and emoji/symbols unsafe for PDF fonts."""
-        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-        text = re.sub(r'\*(.+?)\*', r'\1', text)
-        text = re.sub(r'__(.+?)__', r'\1', text)
-        text = re.sub(r'_(.+?)_', r'\1', text)
-        text = re.sub(r'`(.+?)`', r'\1', text)
-        text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)  # [link](url) → link
-        text = _EMOJI_RE.sub('', text)
+        text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+        text = re.sub(r"\*(.+?)\*", r"\1", text)
+        text = re.sub(r"__(.+?)__", r"\1", text)
+        text = re.sub(r"_(.+?)_", r"\1", text)
+        text = re.sub(r"`(.+?)`", r"\1", text)
+        text = re.sub(r"\[(.+?)\]\(.+?\)", r"\1", text)  # [link](url) → link
+        text = _EMOJI_RE.sub("", text)
         return text
 
     @staticmethod
@@ -533,27 +546,27 @@ class MediaGenerator:
     def _clean_for_tts(text: str) -> str:
         """Strip Markdown formatting and emoji so TTS engines receive clean prose."""
         # Remove header markers
-        text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^#{1,6}\s+", "", text, flags=re.MULTILINE)
         # Remove bold / italic
-        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
-        text = re.sub(r'\*(.+?)\*', r'\1', text)
-        text = re.sub(r'__(.+?)__', r'\1', text)
-        text = re.sub(r'_(.+?)_', r'\1', text)
+        text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+        text = re.sub(r"\*(.+?)\*", r"\1", text)
+        text = re.sub(r"__(.+?)__", r"\1", text)
+        text = re.sub(r"_(.+?)_", r"\1", text)
         # Remove inline code
-        text = re.sub(r'`(.+?)`', r'\1', text)
+        text = re.sub(r"`(.+?)`", r"\1", text)
         # Remove table rows (lines that start/end with |)
-        text = re.sub(r'^\|.*\|$', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^\|.*\|$", "", text, flags=re.MULTILINE)
         # Remove horizontal rules
-        text = re.sub(r'^-{3,}$', '', text, flags=re.MULTILINE)
-        text = re.sub(r'^\*{3,}$', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^-{3,}$", "", text, flags=re.MULTILINE)
+        text = re.sub(r"^\*{3,}$", "", text, flags=re.MULTILINE)
         # Remove blockquote markers
-        text = re.sub(r'^>\s?', '', text, flags=re.MULTILINE)
+        text = re.sub(r"^>\s?", "", text, flags=re.MULTILINE)
         # Convert links to just text
-        text = re.sub(r'\[(.+?)\]\(.+?\)', r'\1', text)
+        text = re.sub(r"\[(.+?)\]\(.+?\)", r"\1", text)
         # Remove emoji
-        text = _EMOJI_RE.sub('', text)
+        text = _EMOJI_RE.sub("", text)
         # Collapse multiple blank lines into one
-        text = re.sub(r'\n{3,}', '\n\n', text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
 
 
@@ -561,7 +574,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     gen = MediaGenerator()
     text = "This is a test of the automated financial analysis system. Markets are up today."
-    audio = gen.generate_audio(text, "data/test_audio.mp3", language="en",
-                               voice_name="Rachel (Female)")
-    gen.generate_pdf("# Test Report\n\nMarkets are **up** today.\n\n- Point 1\n- Point 2",
-                     "data/test_report.pdf", language="en")
+    audio = gen.generate_audio(text, "data/test_audio.mp3", language="en", voice_name="Rachel (Female)")
+    gen.generate_pdf(
+        "# Test Report\n\nMarkets are **up** today.\n\n- Point 1\n- Point 2", "data/test_report.pdf", language="en"
+    )

@@ -27,13 +27,20 @@ def _cached_asset_dashboard(
     end: str | None = None,
 ) -> dict:
     return create_asset_dashboard(
-        list(groups_tuple), period=period, chart_type=chart_type,
-        start=start, end=end,
+        list(groups_tuple),
+        period=period,
+        chart_type=chart_type,
+        start=start,
+        end=end,
     )
 
 
 CHART_PERIOD_OPTIONS_KEYS = [
-    "period_1w", "period_1m", "period_3m", "period_6m", "period_1y",
+    "period_1w",
+    "period_1m",
+    "period_3m",
+    "period_6m",
+    "period_1y",
 ]
 CHART_PERIOD_VALUES = ["5d", "1mo", "3mo", "6mo", "1y"]
 
@@ -78,13 +85,9 @@ def render_charts_tab() -> None:
     if use_custom:
         d1, d2 = st.columns(2)
         with d1:
-            _start = st.date_input(t("date_start"),
-                                   value=datetime.now() - timedelta(days=90),
-                                   key="chart_date_start")
+            _start = st.date_input(t("date_start"), value=datetime.now() - timedelta(days=90), key="chart_date_start")
         with d2:
-            _end = st.date_input(t("date_end"),
-                                 value=datetime.now(),
-                                 key="chart_date_end")
+            _end = st.date_input(t("date_end"), value=datetime.now(), key="chart_date_end")
         custom_start = _start.isoformat() if _start else None
         custom_end = _end.isoformat() if _end else None
 
@@ -110,8 +113,11 @@ def render_charts_tab() -> None:
     if chart_groups:
         with st.spinner(t("loading_market")):
             figures = _cached_asset_dashboard(
-                tuple(chart_groups), chart_period, chart_type,
-                start=custom_start, end=custom_end,
+                tuple(chart_groups),
+                chart_period,
+                chart_type,
+                start=custom_start,
+                end=custom_end,
             )
         for _group_name, fig in figures.items():
             st.plotly_chart(fig, use_container_width=True)
@@ -130,7 +136,9 @@ def render_charts_tab() -> None:
             if len(all_tickers) >= 2:
                 with st.spinner(t("loading_market")):
                     corr_fig = create_correlation_matrix(
-                        all_tickers, all_names, period="3mo",
+                        all_tickers,
+                        all_names,
+                        period="3mo",
                     )
                 st.plotly_chart(corr_fig, use_container_width=True)
     else:

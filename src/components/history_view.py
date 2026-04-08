@@ -34,6 +34,7 @@ def _export_runs_as_zip(hm: HistoryManager, run_ids: list[str]) -> bytes:
             meta = run_data.get("metadata")
             if meta:
                 import json
+
                 zf.writestr(f"{prefix}/metadata.json", json.dumps(meta, indent=2, ensure_ascii=False))
             # PDF
             pdf_path = run_data.get("pdf_path")
@@ -76,7 +77,7 @@ def _render_diff(report_a: str, report_b: str, label_a: str, label_b: str):
         '<div style="font-family:monospace;font-size:13px;max-height:600px;overflow-y:auto;'
         'background:#0f172a;border-radius:8px;padding:16px;border:1px solid #334155;">'
         + "\n".join(html_parts)
-        + '</div>',
+        + "</div>",
         unsafe_allow_html=True,
     )
 
@@ -90,7 +91,8 @@ def render_history_tab(history_dir: str):
         hist_col1, hist_col2, hist_col3 = st.columns([2, 1, 1])
         with hist_col1:
             hist_keyword = st.text_input(
-                t("search_keyword"), key="hist_keyword",
+                t("search_keyword"),
+                key="hist_keyword",
                 placeholder=t("search_placeholder"),
             )
         with hist_col2:
