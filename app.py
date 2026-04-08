@@ -573,11 +573,10 @@ llm_provider = _llm_options[_llm_selected_name]
 
 # Gemini 模型自定义
 _gemini_model_choices = [
-    "gemini-2.5-flash-preview-04-17",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
     "gemini-2.0-flash",
     "gemini-2.0-flash-lite",
-    "gemini-1.5-pro",
-    "gemini-1.5-flash",
 ]
 _default_gemini_model = os.getenv("GEMINI_MODEL", _gemini_model_choices[0])
 _gemini_model_idx = _gemini_model_choices.index(_default_gemini_model) if _default_gemini_model in _gemini_model_choices else 0
