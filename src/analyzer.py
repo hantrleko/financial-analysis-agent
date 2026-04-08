@@ -274,6 +274,11 @@ Keep it professional, data-driven, yet engaging."""
             logger.error("Gemini Stream API error %d: %s", resp.status_code, resp.text[:500])
             resp.raise_for_status()
 
+        # Force UTF-8 decoding — requests defaults to ISO-8859-1 for
+        # text/* content types when the server omits charset, which
+        # garbles Chinese characters.
+        resp.encoding = "utf-8"
+
         for line in resp.iter_lines(decode_unicode=True):
             if not line:
                 continue
@@ -344,6 +349,9 @@ Keep it professional, data-driven, yet engaging."""
         }
         resp = http_requests.post(url, json=payload, headers=headers, timeout=120, stream=True)
         resp.raise_for_status()
+
+        # Force UTF-8 decoding for Chinese content support.
+        resp.encoding = "utf-8"
 
         for line in resp.iter_lines(decode_unicode=True):
             if not line:
