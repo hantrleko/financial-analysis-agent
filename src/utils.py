@@ -42,15 +42,21 @@ def get_proxy() -> dict | None:
     return None
 
 
-def retry_api_call(func, max_retries: int = 3, base_delay: float = 1.0,
+def retry_api_call(func, max_retries: int | None = None, base_delay: float | None = None,
                    retryable_status_codes: tuple = (429, 500, 502, 503, 504)):
     """
     带指数退避的 API 调用重试装饰器。
     区分可重试错误（429、5xx、timeout）和不可重试错误（401、403 等）。
+    默认从 src.config 读取 API_MAX_RETRIES / API_RETRY_BASE_DELAY。
 
     用法：
         result = retry_api_call(lambda: requests.post(url, json=payload, timeout=60))
     """
+    from src.config import API_MAX_RETRIES, API_RETRY_BASE_DELAY
+    if max_retries is None:
+        max_retries = API_MAX_RETRIES
+    if base_delay is None:
+        base_delay = API_RETRY_BASE_DELAY
     import requests as http_requests
 
     last_exception = None

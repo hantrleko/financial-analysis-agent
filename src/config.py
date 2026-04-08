@@ -43,7 +43,7 @@ RSS_FEEDS = [
     {"url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258", "source": "CNBC (Economy)"},
     {"url": "https://feeds.marketwatch.com/marketwatch/marketpulse", "source": "MarketWatch (Pulse)"},
     # 中文财经源
-    {"url": "https://finance.sina.com.cn/roll/index.d.html?cid=56588&page=1", "source": "Sina Finance"},
+    {"url": "https://rsshub.app/sina/finance/roll", "source": "Sina Finance"},
     {"url": "https://www.cls.cn/rss", "source": "Cls.cn"},
     {"url": "https://rsshub.app/eastmoney/report", "source": "Eastmoney"},
 ]
