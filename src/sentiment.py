@@ -8,8 +8,8 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 
-import yfinance as yf
 import pandas as pd
+import yfinance as yf
 
 from src.config import SENTIMENT_ASSETS, SENTIMENT_THRESHOLDS, VIX_LEVELS
 

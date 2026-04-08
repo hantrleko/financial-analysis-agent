@@ -113,7 +113,7 @@ def render_charts_tab() -> None:
                 tuple(chart_groups), chart_period, chart_type,
                 start=custom_start, end=custom_end,
             )
-        for group_name, fig in figures.items():
+        for _group_name, fig in figures.items():
             st.plotly_chart(fig, use_container_width=True)
 
         # ---- Correlation matrix ----

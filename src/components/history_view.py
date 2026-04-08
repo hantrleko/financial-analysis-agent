@@ -5,16 +5,16 @@
 
 from __future__ import annotations
 
+import difflib
 import html as html_mod
 import io
 import os
 import zipfile
-import difflib
 
 import streamlit as st
 
-from src.i18n import t
 from src.history import HistoryManager
+from src.i18n import t
 
 
 def _export_runs_as_zip(hm: HistoryManager, run_ids: list[str]) -> bytes:

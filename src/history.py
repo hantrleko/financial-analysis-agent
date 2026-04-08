@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import os
 import json
 import logging
+import os
 import shutil
 from datetime import datetime
 
-from src.config import HISTORY_MAX_RUNS, HISTORY_MAX_AGE_DAYS
+from src.config import HISTORY_MAX_AGE_DAYS, HISTORY_MAX_RUNS
 
 logger = logging.getLogger(__name__)
 

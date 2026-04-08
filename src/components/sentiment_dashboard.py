@@ -11,8 +11,8 @@ from datetime import datetime
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.i18n import t, sig_label, vix_label
-from src.sentiment import MarketSentimentAnalyzer, SIGNAL_EMOJI, SentimentReport
+from src.i18n import sig_label, t, vix_label
+from src.sentiment import SIGNAL_EMOJI, MarketSentimentAnalyzer, SentimentReport
 
 
 @st.cache_data(ttl=300, show_spinner=False)

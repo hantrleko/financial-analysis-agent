@@ -1,6 +1,5 @@
 """FinancialAnalyzer 单元测试。"""
 
-from unittest.mock import patch, MagicMock
 from src.analyzer import FinancialAnalyzer
 
 
@@ -51,7 +50,7 @@ def test_analyze_news_stream_empty():
 def test_gemini_model_env_override(monkeypatch):
     """GEMINI_MODEL 环境变量应覆盖默认模型。"""
     monkeypatch.setenv("GEMINI_MODEL", "gemini-1.5-pro")
-    analyzer = FinancialAnalyzer(provider="gemini")
+    _analyzer = FinancialAnalyzer(provider="gemini")  # noqa: F841 — ensures init reads env
 
     import os
     assert os.getenv("GEMINI_MODEL") == "gemini-1.5-pro"

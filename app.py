@@ -1,7 +1,6 @@
+import logging
 import os
 import sys
-import logging
-from datetime import datetime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
 
@@ -9,20 +8,23 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import streamlit as st
 
-from src.config import (
-    VERSION, AVAILABLE_SOURCES, REPORT_SECTORS,
-    LLM_PROVIDERS, DEFAULT_LLM_PROVIDER,
-)
-from src.collector import NewsCollector
 from src.analyzer import FinancialAnalyzer
-from src.media_gen import MediaGenerator, VOICE_PRESETS, EDGE_VOICE_PRESETS, TTS_ENGINES
-from src.history import HistoryManager
-from src.i18n import t
-from src.styles import inject_styles
-from src.components.newspaper_view import render_newspaper
-from src.components.sentiment_dashboard import render_sentiment_tab
+from src.collector import NewsCollector
 from src.components.charts_view import render_charts_tab
 from src.components.history_view import render_history_tab
+from src.components.newspaper_view import render_newspaper
+from src.components.sentiment_dashboard import render_sentiment_tab
+from src.config import (
+    AVAILABLE_SOURCES,
+    DEFAULT_LLM_PROVIDER,
+    LLM_PROVIDERS,
+    REPORT_SECTORS,
+    VERSION,
+)
+from src.history import HistoryManager
+from src.i18n import t
+from src.media_gen import EDGE_VOICE_PRESETS, TTS_ENGINES, VOICE_PRESETS, MediaGenerator
+from src.styles import inject_styles
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")

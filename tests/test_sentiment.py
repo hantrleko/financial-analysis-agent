@@ -1,8 +1,6 @@
 """MarketSentimentAnalyzer 单元测试。"""
 
-import pandas as pd
-import numpy as np
-from src.sentiment import MarketSentimentAnalyzer, AssetSignal
+from src.sentiment import AssetSignal, MarketSentimentAnalyzer
 
 
 def test_classify_score():

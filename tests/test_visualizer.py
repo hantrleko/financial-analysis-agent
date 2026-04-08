@@ -1,7 +1,8 @@
 """Visualizer 单元测试。"""
 
 import pandas as pd
-from src.visualizer import create_price_chart, ASSET_GROUPS
+
+from src.visualizer import ASSET_GROUPS, create_price_chart
 
 
 def test_create_price_chart_empty():

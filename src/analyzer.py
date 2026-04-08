@@ -9,9 +9,14 @@ from datetime import datetime, timezone
 import yfinance as yf
 
 from src.config import (
-    REPORT_SECTORS, SNAPSHOT_TICKERS, PREVIOUS_REPORT_MAX_CHARS,
-    TIME_RANGE_PERIOD_MAP, PREVIOUS_REPORT_MAX_AGE_HOURS,
-    LLM_PROVIDERS, DEFAULT_LLM_PROVIDER, DEEP_LLM_PROVIDER,
+    DEEP_LLM_PROVIDER,
+    DEFAULT_LLM_PROVIDER,
+    LLM_PROVIDERS,
+    PREVIOUS_REPORT_MAX_AGE_HOURS,
+    PREVIOUS_REPORT_MAX_CHARS,
+    REPORT_SECTORS,
+    SNAPSHOT_TICKERS,
+    TIME_RANGE_PERIOD_MAP,
 )
 from src.utils import get_api_key, get_proxy, retry_api_call
 
@@ -335,8 +340,9 @@ Keep it professional, data-driven, yet engaging."""
     def _call_openai_compat_stream(self, input_text: str,
                                     provider_key: str) -> Generator[str, None, None]:
         """调用 OpenAI 兼容接口流式输出（智谱 GLM 等）。"""
-        import requests as http_requests
         import json as json_mod
+
+        import requests as http_requests
         cfg = LLM_PROVIDERS[provider_key]
         api_key = get_api_key(cfg["env_key"])
         url = f"{cfg['base_url']}/chat/completions"

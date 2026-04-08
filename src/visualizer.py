@@ -4,8 +4,8 @@ import logging
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 import plotly.graph_objects as go
+import yfinance as yf
 
 logger = logging.getLogger(__name__)
 

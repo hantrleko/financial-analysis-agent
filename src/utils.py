@@ -3,8 +3,8 @@
 消除 collector.py / analyzer.py 中重复的 API Key 与代理获取逻辑。
 """
 
-import os
 import logging
+import os
 import time
 
 from dotenv import load_dotenv
@@ -88,7 +88,7 @@ def retry_api_call(func, max_retries: int | None = None, base_delay: float | Non
             if attempt < max_retries - 1:
                 delay = base_delay * (2 ** attempt)
                 time.sleep(delay)
-        except Exception as e:
+        except Exception:
             # Non-retryable exception — raise immediately
             raise
 

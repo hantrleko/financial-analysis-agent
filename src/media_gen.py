@@ -1,16 +1,18 @@
 from __future__ import annotations
 
-import os
-import re
 import asyncio
 import logging
+import os
 import platform
+import re
 from datetime import datetime
+
+from dotenv import load_dotenv
 from elevenlabs import VoiceSettings
 from elevenlabs.client import ElevenLabs
 from fpdf import FPDF
-from dotenv import load_dotenv
-from src.config import VERSION, TTS_MAX_CHARS_PER_CHUNK, EDGE_TTS_MAX_CHARS_PER_CHUNK
+
+from src.config import EDGE_TTS_MAX_CHARS_PER_CHUNK, TTS_MAX_CHARS_PER_CHUNK, VERSION
 
 load_dotenv()
 

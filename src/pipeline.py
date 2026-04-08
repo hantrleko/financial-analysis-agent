@@ -3,15 +3,14 @@
 消除 main.py 和 app.py 之间的逻辑重复。
 """
 
-import os
 import logging
+import os
 from dataclasses import dataclass, field
 
-from src.collector import NewsCollector
 from src.analyzer import FinancialAnalyzer
-from src.media_gen import MediaGenerator
+from src.collector import NewsCollector
 from src.history import HistoryManager
-from src.config import VERSION
+from src.media_gen import MediaGenerator
 
 logger = logging.getLogger(__name__)
 

@@ -1,24 +1,24 @@
 from __future__ import annotations
 
-import os
 import json
 import logging
+import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from email.utils import parsedate_to_datetime
 
 from src.config import (
-    MAX_SCRAPE_CHARS,
-    MAX_SCRAPE_ARTICLES,
-    SCRAPE_TIMEOUT,
-    SCRAPE_WORKERS,
-    RSS_FEEDS,
     DEDUP_SIMILARITY_THRESHOLD,
-    LLM_PROVIDERS,
     GOOGLE_NEWS_RSS_TEMPLATE,
     GOOGLE_NEWS_TIME_MAP,
+    LLM_PROVIDERS,
+    MAX_SCRAPE_ARTICLES,
+    MAX_SCRAPE_CHARS,
     PAYWALL_DOMAINS,
+    RSS_FEEDS,
+    SCRAPE_TIMEOUT,
+    SCRAPE_WORKERS,
 )
 from src.utils import get_api_key, get_proxy, retry_api_call
 
@@ -125,9 +125,10 @@ class NewsCollector:
     def _fetch_google_news_rss(self, query: str, count: int = 10,
                                time_range: str = "24h") -> list[dict[str, object]]:
         """通过 Google News RSS 按 query 动态搜索新闻。中文 query 自动附加英文关键词。"""
-        import feedparser
-        from urllib.parse import quote_plus
         import re
+        from urllib.parse import quote_plus
+
+        import feedparser
 
         # 如果 query 包含中文，附加英文金融关键词以提升 Google News 命中率
         has_chinese = bool(re.search(r'[\u4e00-\u9fff]', query))

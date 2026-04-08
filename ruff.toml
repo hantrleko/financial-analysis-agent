@@ -13,9 +13,13 @@ select = [
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
+    "E402",   # module-level import not at top (needed for sys.path manipulation)
     "B008",   # do not perform function calls in argument defaults
+    "B905",   # zip-without-explicit-strict (Python 3.10+ strict param)
     "SIM108", # use ternary operator
     "UP007",  # use X | Y for union types (needs from __future__)
+    "UP015",  # redundant-open-modes
+    "UP017",  # datetime-timezone-utc
 ]
 
 [lint.per-file-ignores]
