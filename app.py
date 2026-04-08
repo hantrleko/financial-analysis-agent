@@ -92,6 +92,11 @@ I18N = {
         "en": "Gemini 2.5 Flash (default) — fast, high quality, free tier available",
         "zh": "Gemini 2.5 Flash（默认）— 快速、高质量、免费额度可用",
     },
+    "gemini_model": {"en": "Gemini Model", "zh": "Gemini 模型"},
+    "gemini_model_help": {
+        "en": "Override the default Gemini model. Can also be set via GEMINI_MODEL env var.",
+        "zh": "覆盖默认 Gemini 模型。也可通过环境变量 GEMINI_MODEL 设置。",
+    },
     "run_analysis": {"en": "🚀 Run Analysis", "zh": "🚀 开始分析"},
     "update_log": {"en": "📋 Update Log", "zh": "📋 更新日志"},
 
@@ -565,6 +570,24 @@ _llm_selected_name = st.sidebar.selectbox(
     help=t("llm_provider_help"),
 )
 llm_provider = _llm_options[_llm_selected_name]
+
+# Gemini 模型自定义
+_gemini_model_choices = [
+    "gemini-2.5-flash-preview-04-17",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-pro",
+    "gemini-1.5-flash",
+]
+_default_gemini_model = os.getenv("GEMINI_MODEL", _gemini_model_choices[0])
+_gemini_model_idx = _gemini_model_choices.index(_default_gemini_model) if _default_gemini_model in _gemini_model_choices else 0
+_selected_gemini_model = st.sidebar.selectbox(
+    t("gemini_model"),
+    options=_gemini_model_choices,
+    index=_gemini_model_idx,
+    help=t("gemini_model_help"),
+)
+os.environ["GEMINI_MODEL"] = _selected_gemini_model
 
 st.sidebar.divider()
 
