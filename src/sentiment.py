@@ -3,6 +3,7 @@
 从 yfinance 拉取多维度市场数据，计算各资产/板块的多空信号，
 输出综合情绪评分、机会与风险识别。
 """
+from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
@@ -169,7 +170,11 @@ class MarketSentimentAnalyzer:
         return report
 
     @staticmethod
-    def _compute_asset_signal(name, ticker, sector, group, close_df, volume_df) -> AssetSignal | None:
+    def _compute_asset_signal(
+        name: str, ticker: str, sector: str, group: str,
+        close_df: pd.DataFrame | pd.Series,
+        volume_df: pd.DataFrame | pd.Series | None,
+    ) -> AssetSignal | None:
         """计算单个资产的多空信号。"""
         try:
             # 处理 MultiIndex 或单列
@@ -369,12 +374,13 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s: %(message)s")
     analyzer = MarketSentimentAnalyzer()
     result = analyzer.analyze()
-    print(f"\nOverall: {result.overall_score:+.2f} ({result.overall_signal})")
-    print(f"VIX: {result.vix_value:.1f} ({result.vix_level})")
-    print(f"Bull: {result.bull_count}  Bear: {result.bear_count}  Neutral: {result.neutral_count}")
-    print("\n--- Opportunities ---")
+    logger.info("Overall: %+.2f (%s)", result.overall_score, result.overall_signal)
+    logger.info("VIX: %.1f (%s)", result.vix_value, result.vix_level)
+    logger.info("Bull: %d  Bear: %d  Neutral: %d",
+                result.bull_count, result.bear_count, result.neutral_count)
+    logger.info("--- Opportunities ---")
     for a in result.opportunities:
-        print(f"  {a.name}: {a.score:+.2f} ({a.reason})")
-    print("\n--- Risks ---")
+        logger.info("  %s: %+.2f (%s)", a.name, a.score, a.reason)
+    logger.info("--- Risks ---")
     for a in result.risks:
-        print(f"  {a.name}: {a.score:+.2f} ({a.reason})")
+        logger.info("  %s: %+.2f (%s)", a.name, a.score, a.reason)

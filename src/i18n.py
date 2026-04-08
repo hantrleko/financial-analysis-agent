@@ -199,6 +199,29 @@ I18N = {
     "compare_right": {"en": "Report B", "zh": "报告 B"},
     "no_diff": {"en": "Reports are identical.", "zh": "两份报告内容相同。"},
 
+    # Newspaper themes
+    "newspaper_theme": {"en": "Newspaper Theme", "zh": "报纸主题"},
+    "theme_classic": {"en": "📜 Classic", "zh": "📜 经典"},
+    "theme_modern": {"en": "✨ Modern", "zh": "✨ 现代"},
+
+    # Charts enhancements
+    "chart_type": {"en": "Chart Type", "zh": "图表类型"},
+    "chart_line": {"en": "Line Chart", "zh": "折线图"},
+    "chart_candlestick": {"en": "Candlestick", "zh": "K线图"},
+    "chart_correlation": {"en": "📊 Correlation Matrix", "zh": "📊 相关性矩阵"},
+    "correlation_title": {"en": "Asset Correlation Matrix", "zh": "资产相关性矩阵"},
+    "custom_date_range": {"en": "Custom Date Range", "zh": "自定义日期范围"},
+    "date_start": {"en": "Start Date", "zh": "开始日期"},
+    "date_end": {"en": "End Date", "zh": "结束日期"},
+
+    # News display enhancements
+    "news_group_by": {"en": "Group by", "zh": "分组方式"},
+    "group_none": {"en": "No Grouping", "zh": "不分组"},
+    "group_source": {"en": "By Source", "zh": "按来源"},
+    "sentiment_positive": {"en": "🟢 Positive", "zh": "🟢 正面"},
+    "sentiment_negative": {"en": "🔴 Negative", "zh": "🔴 负面"},
+    "sentiment_neutral_tag": {"en": "⚪ Neutral", "zh": "⚪ 中性"},
+
     # 通用标签
     "query_label": {"en": "Query", "zh": "查询"},
     "sources_label": {"en": "Sources", "zh": "来源"},

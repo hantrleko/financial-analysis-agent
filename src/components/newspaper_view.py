@@ -1,7 +1,10 @@
 """
 报纸版面渲染组件。
 将 Markdown 分析报告转换为经典报纸版面 HTML。
+支持多主题（经典 classic / 现代 modern）。
 """
+
+from __future__ import annotations
 
 import re
 from datetime import datetime
@@ -12,13 +15,40 @@ from src.config import VERSION
 from src.i18n import t
 from src.newspaper import inline_markdown
 
+# ---- Theme definitions ------------------------------------------------
 
-def _inline_md(text):
+NEWSPAPER_THEMES: dict[str, dict[str, str]] = {
+    "classic": {
+        "bg": "#fdf6e3",
+        "fg": "#1a1a1a",
+        "accent": "#8b7355",
+        "font": '"Georgia", "Noto Serif SC", "Source Han Serif SC", "SimSun", serif',
+        "heading_font": '"Times New Roman", "Noto Serif SC", serif',
+        "border": "#8b7355",
+        "sub_color": "#555",
+        "body_color": "#2a2a2a",
+        "footer_color": "#888",
+    },
+    "modern": {
+        "bg": "#ffffff",
+        "fg": "#111827",
+        "accent": "#2563eb",
+        "font": '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif',
+        "heading_font": '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        "border": "#d1d5db",
+        "sub_color": "#6b7280",
+        "body_color": "#374151",
+        "footer_color": "#9ca3af",
+    },
+}
+
+
+def _inline_md(text: str) -> str:
     """处理行内 Markdown 格式。"""
     return inline_markdown(text)
 
 
-def _strip_emoji(text):
+def _strip_emoji(text: str) -> str:
     """去除 Emoji 前缀，用于报纸正式排版。"""
     return re.sub(r'^[\U0001f300-\U0001fAFF\u2600-\u27BF\u2700-\u27BF]+\s*', '', text).strip()
 
@@ -97,16 +127,13 @@ def _md_to_html_body(text):
     return "\n".join(html_parts)
 
 
-def render_newspaper(report_md):
+def render_newspaper(report_md: str, theme_name: str = "classic") -> str:
     """
     将 Markdown 分析报告解析为报纸版面 HTML。
-    解析逻辑：
-    - 第一个 ## 标题 -> 头条大标题
-    - 第一个 ## 下的第一句话 -> 副标题
-    - 后续 ## 标题 -> 各版块 section
-    - 正文转 HTML 段落
+    支持多主题: classic (经典报纸) / modern (现代简洁)。
     """
     language = st.session_state.get("language", "en")
+    theme = NEWSPAPER_THEMES.get(theme_name, NEWSPAPER_THEMES["classic"])
 
     # 按 ## 分割为 sections（不匹配 ###）
     parts = re.split(r'^##(?!#)\s+', report_md, flags=re.MULTILINE)
@@ -158,19 +185,27 @@ def render_newspaper(report_md):
     edition = t("newspaper_edition")
     vol_no = f"Vol. {now.strftime('%Y')} No. {now.strftime('%j')}"
 
-    html = f'''<div class="newspaper">
-<!-- 报头 -->
+    # Theme-specific inline overrides (applied via style= on .newspaper div)
+    theme_style = (
+        f'background:{theme["bg"]};color:{theme["fg"]};'
+        f'font-family:{theme["font"]};'
+        f'border-color:{theme["border"]};'
+    )
+    heading_style = f'font-family:{theme["heading_font"]};color:{theme["fg"]};'
+
+    html = f'''<div class="newspaper" style="{theme_style}">
+<!-- masthead -->
 <div class="np-masthead">
-    <div class="np-masthead-title">{t("newspaper_masthead")}</div>
-    <div class="np-masthead-sub">
+    <div class="np-masthead-title" style="{heading_style}">{t("newspaper_masthead")}</div>
+    <div class="np-masthead-sub" style="color:{theme['sub_color']};">
         <span>{date_str}</span>
         <span>{edition}</span>
         <span>{vol_no}</span>
     </div>
 </div>
 
-<!-- 头条 -->
-<div class="np-headline">{_inline_md(headline)}</div>
+<!-- headline -->
+<div class="np-headline" style="{heading_style}">{_inline_md(headline)}</div>
 '''
     if subheadline:
         html += f'<div class="np-subheadline">{subheadline}</div>\n'

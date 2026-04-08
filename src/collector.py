@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import json
 import logging
@@ -25,8 +27,10 @@ logger = logging.getLogger(__name__)
 
 class NewsCollector:
 
-    def fetch_news(self, query="financial markets trends", count=10, sources=None,
-                   time_range="24h", ai_search=False, **kwargs):
+    def fetch_news(self, query: str = "financial markets trends", count: int = 10,
+                   sources: list[str] | None = None,
+                   time_range: str = "24h", ai_search: bool = False,
+                   **kwargs: object) -> list[dict[str, object]]:
         """
         获取新闻。
         ai_search=True: 先用 Gemini Search Grounding 联网搜索，再用 RSS 补充
@@ -49,7 +53,7 @@ class NewsCollector:
         return self._dedup(merged, count)
 
     @staticmethod
-    def _source_matches(feed_source, selected_sources):
+    def _source_matches(feed_source: str, selected_sources: set[str]) -> bool:
         """判断 feed source 是否匹配用户选择来源（支持 CNBC (Markets) 这类扩展名）。"""
         if not selected_sources:
             return True
@@ -61,7 +65,8 @@ class NewsCollector:
                 return True
         return False
 
-    def _fetch_rss(self, count=10, time_range="24h", sources=None):
+    def _fetch_rss(self, count: int = 10, time_range: str = "24h",
+                   sources: list[str] | None = None) -> list[dict[str, object]]:
         """从多个 RSS 源聚合新闻，按时间过滤、去重后取 top N。"""
         import feedparser
 
@@ -117,7 +122,8 @@ class NewsCollector:
         logger.info("Successfully fetched %d unique articles from %d RSS sources.", len(result), len(RSS_FEEDS))
         return result
 
-    def _fetch_google_news_rss(self, query, count=10, time_range="24h"):
+    def _fetch_google_news_rss(self, query: str, count: int = 10,
+                               time_range: str = "24h") -> list[dict[str, object]]:
         """通过 Google News RSS 按 query 动态搜索新闻。中文 query 自动附加英文关键词。"""
         import feedparser
         from urllib.parse import quote_plus
@@ -152,7 +158,7 @@ class NewsCollector:
             return []
 
     @staticmethod
-    def _dedup(items, count):
+    def _dedup(items: list[dict[str, object]], count: int) -> list[dict[str, object]]:
         """去重（URL + 标题模糊匹配）。"""
         seen_urls = set()
         seen_titles = []
@@ -174,7 +180,8 @@ class NewsCollector:
             unique_items.append(item)
         return unique_items[:count]
 
-    def _fetch_gemini_search(self, query, count, time_range):
+    def _fetch_gemini_search(self, query: str, count: int,
+                             time_range: str) -> list[dict[str, object]]:
         """用 Gemini Search Grounding 联网搜索最新金融新闻。"""
         import requests as http_requests
 
@@ -266,7 +273,7 @@ class NewsCollector:
             logger.warning("Gemini Search failed: %s", e)
             return []
 
-    def _get_mock_data(self):
+    def _get_mock_data(self) -> list[dict[str, object]]:
         """兜底 mock 数据，用于测试流程。"""
         logger.info("Returning MOCK data.")
         return [
@@ -288,7 +295,7 @@ class NewsCollector:
             }
         ]
 
-    def scrape_content(self, url, timeout=SCRAPE_TIMEOUT):
+    def scrape_content(self, url: str, timeout: int = SCRAPE_TIMEOUT) -> str:
         """使用 trafilatura 提取文章正文，失败则回退到 BeautifulSoup。跳过付费墙站点。"""
         from urllib.parse import urlparse
 
@@ -338,7 +345,8 @@ class NewsCollector:
 
         return ""
 
-    def enrich_with_content(self, news_items, max_scrape=MAX_SCRAPE_ARTICLES):
+    def enrich_with_content(self, news_items: list[dict[str, object]],
+                            max_scrape: int = MAX_SCRAPE_ARTICLES) -> list[dict[str, object]]:
         """为新闻列表并行抓取正文内容，添加 full_content 字段。"""
         to_scrape = [
             (i, item) for i, item in enumerate(news_items[:max_scrape])
@@ -368,7 +376,8 @@ class NewsCollector:
 
         return news_items
 
-    def save_news(self, news_items, filename="data/raw_news.json"):
+    def save_news(self, news_items: list[dict[str, object]],
+                  filename: str = "data/raw_news.json") -> None:
         """保存新闻数据到 JSON 文件。"""
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         with open(filename, "w", encoding="utf-8") as f:

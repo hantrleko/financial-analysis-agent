@@ -264,6 +264,14 @@ with st.sidebar.expander(t("advanced_settings"), expanded=False):
         disabled=not deep_analysis,
         help=t("newspaper_mode_help"),
     )
+    _theme_options = {t("theme_classic"): "classic", t("theme_modern"): "modern"}
+    _theme_label = st.selectbox(
+        t("newspaper_theme"),
+        options=list(_theme_options.keys()),
+        index=0,
+        disabled=not (deep_analysis and newspaper_mode),
+    )
+    newspaper_theme = _theme_options[_theme_label]
 
 run_clicked = st.sidebar.button(t("run_analysis"), use_container_width=True, type="primary")
 
@@ -313,19 +321,65 @@ def render_step_pills(current_step: int):
     return '<div class="progress-steps">' + "".join(parts) + '</div>'
 
 
-def display_result(news_items, report, audio_path=None, pdf_path=None, use_newspaper=False):
-    with st.expander(t("collected_news", count=len(news_items)), expanded=False):
+def _sentiment_tag(title: str) -> str:
+    """Simple keyword-based sentiment tag for a news title."""
+    title_lower = title.lower()
+    pos_kw = ["surge", "jump", "rally", "gain", "rise", "soar", "record", "boom",
+              "涨", "大涨", "飙升", "反弹", "突破", "创新高", "利好"]
+    neg_kw = ["crash", "plunge", "drop", "fall", "decline", "slump", "fear", "risk",
+              "跌", "大跌", "暴跌", "下跌", "崩", "风险", "利空"]
+    if any(k in title_lower for k in pos_kw):
+        return t("sentiment_positive")
+    if any(k in title_lower for k in neg_kw):
+        return t("sentiment_negative")
+    return t("sentiment_neutral_tag")
+
+
+def _render_news_list(news_items: list, show_full_content: bool = False) -> None:
+    """Render news items with sentiment tags and optional source grouping."""
+    _group_options = {t("group_none"): "none", t("group_source"): "source"}
+    _grp_label = st.selectbox(t("news_group_by"), options=list(_group_options.keys()),
+                              index=0, key="news_group_select")
+    group_mode = _group_options[_grp_label]
+
+    if group_mode == "source":
+        from collections import defaultdict
+        groups: dict[str, list] = defaultdict(list)
         for item in news_items:
+            groups[item.get("source", "Unknown")].append(item)
+        for source, items in groups.items():
+            st.markdown(f"**{source}** ({len(items)})")
+            for item in items:
+                tag = _sentiment_tag(item.get("title", ""))
+                desc = item.get("description", "")
+                full = item.get("full_content", "") if show_full_content else ""
+                extra = f"\n\n\U0001f4c4 _{t('chars_scraped', n=len(full))}_" if full else ""
+                st.markdown(f"{tag} **{item.get('title', 'No Title')}**")
+                st.caption(f"{desc}{extra}")
+            st.divider()
+    else:
+        for item in news_items:
+            tag = _sentiment_tag(item.get("title", ""))
+            desc = item.get("description", "")
+            full = item.get("full_content", "") if show_full_content else ""
+            extra = f"\n\n\U0001f4c4 _{t('chars_scraped', n=len(full))}_" if full else ""
             st.markdown(
-                f"**{item.get('title', 'No Title')}** "
+                f"{tag} **{item.get('title', 'No Title')}** "
                 f"\u2014 *{item.get('source', 'Unknown')}*"
             )
-            st.caption(item.get("description", ""))
+            st.caption(f"{desc}{extra}")
             st.divider()
+
+
+def display_result(news_items, report, audio_path=None, pdf_path=None,
+                   use_newspaper=False, newspaper_theme="classic"):
+    with st.expander(t("collected_news", count=len(news_items)), expanded=False):
+        _render_news_list(news_items)
 
     st.subheader(t("analysis_report"))
     if use_newspaper:
-        st.markdown(render_newspaper(report), unsafe_allow_html=True)
+        st.markdown(render_newspaper(report, theme_name=newspaper_theme),
+                    unsafe_allow_html=True)
     else:
         st.markdown(report)
 
@@ -384,18 +438,7 @@ with tab_analysis:
                     st.caption(t("scraped_count", scraped=scraped, total=len(news_items)))
 
                 with st.expander(t("collected_news", count=len(news_items)), expanded=False):
-                    for item in news_items:
-                        st.markdown(
-                            f"**{item.get('title', 'No Title')}** "
-                            f"\u2014 *{item.get('source', 'Unknown')}*"
-                        )
-                        desc = item.get("description", "")
-                        full = item.get("full_content", "")
-                        if full:
-                            st.caption(f"{desc}\n\n\U0001f4c4 _{t('chars_scraped', n=len(full))}_")
-                        else:
-                            st.caption(desc)
-                        st.divider()
+                    _render_news_list(news_items, show_full_content=True)
 
                 previous_report = None
                 previous_report_meta = None
@@ -441,7 +484,10 @@ with tab_analysis:
 
                 if newspaper_mode and deep_analysis:
                     report_container.empty()
-                    report_container.markdown(render_newspaper(report), unsafe_allow_html=True)
+                    report_container.markdown(
+                        render_newspaper(report, theme_name=newspaper_theme),
+                        unsafe_allow_html=True,
+                    )
 
                 report_path = os.path.join(DATA_DIR, "daily_report.md")
                 analyzer.save_analysis(report, report_path)
@@ -510,6 +556,7 @@ with tab_analysis:
                     "pdf_path": pdf_path,
                     "run_id": run_id,
                     "newspaper_mode": newspaper_mode and deep_analysis,
+                    "newspaper_theme": newspaper_theme,
                 }
 
         except Exception as e:
@@ -524,6 +571,7 @@ with tab_analysis:
             result.get("audio_path"),
             result.get("pdf_path"),
             use_newspaper=result.get("newspaper_mode", False),
+            newspaper_theme=result.get("newspaper_theme", "classic"),
         )
 
 with tab_sentiment:

@@ -30,7 +30,7 @@ div[data-testid="stMetric"] {
     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
 }
 div[data-testid="stMetric"] label {
-    color: #94a3b8 !important;
+    color: #cbd5e1 !important;  /* WCAG AA: raised from #94a3b8 → #cbd5e1 (7.5:1) */
     font-size: 13px !important;
     font-weight: 500 !important;
 }
@@ -83,12 +83,12 @@ section[data-testid="stSidebar"] .stButton > button:hover {
     margin-bottom: 4px;
 }
 .asset-card .asset-meta {
-    color: #94a3b8;
+    color: #cbd5e1;  /* WCAG AA: raised from #94a3b8 */
     font-size: 13px;
     line-height: 1.6;
 }
 .asset-card .asset-reason {
-    color: #64748b;
+    color: #94a3b8;  /* WCAG AA: raised from #64748b */
     font-size: 12px;
     font-style: italic;
     margin-top: 4px;
@@ -120,10 +120,16 @@ hr {
     border-color: #1e293b !important;
 }
 
-/* ── 数据表格 ── */
+/* ── 数据表格 + 斑马纹 ── */
 .stDataFrame {
     border-radius: 8px;
     overflow: hidden;
+}
+.stDataFrame tbody tr:nth-child(even) {
+    background: rgba(51, 65, 85, 0.25);
+}
+.stDataFrame tbody tr:hover {
+    background: rgba(59, 130, 246, 0.12);
 }
 
 /* ── 进度步骤条 ── */
@@ -143,7 +149,7 @@ hr {
     font-weight: 500;
     background: #1e293b;
     border: 1px solid #334155;
-    color: #64748b;
+    color: #94a3b8;  /* WCAG AA: raised from #64748b */
     transition: all 0.3s ease;
 }
 .progress-step.active {
@@ -172,6 +178,11 @@ hr {
     padding: 4px 12px;
     margin: 2px 0;
     border-radius: 4px;
+}
+
+/* ── 主题切换动画 ── */
+* {
+    transition: background-color 0.3s ease, color 0.2s ease, border-color 0.3s ease;
 }
 
 /* ═══════════════ 报纸版面 ═══════════════ */

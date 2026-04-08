@@ -4,6 +4,73 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [v2.0] - 2026-04-08
+
+### Added — 设计展示层面 & 代码质量全面优化
+
+**📊 情绪仪表盘增强 (优化 3.1 + 3.2)**
+- 新增 Gauge 仪表盘（情绪分数可视化，红/黄/绿渐变）
+- 新增雷达图（Radar Chart）— 多维度板块强弱对比
+- 新增热力图（Heatmap）— 板块 × 指标矩阵着色
+
+**📰 报纸版面多主题 (优化 3.3)**
+- 新增 Classic / Modern 两套主题切换
+- 侧边栏新增主题选择器
+- Modern 主题：无衬线字体、渐变色背景、卡片式布局
+
+**📈 行情图表功能扩展 (优化 3.4)**
+- 新增 K 线图（Candlestick）+ MA20 均线叠加 + 成交量柱状图
+- 新增资产相关性矩阵热力图（Correlation Matrix）
+- 新增自定义日期范围选择器（替代固定周期选项）
+
+**🎨 暗色主题对比度优化 (优化 3.5)**
+- 修复 WCAG AA 对比度不足的标签颜色（#94a3b8 → #cbd5e1）
+- 表格新增斑马纹条纹（zebra striping）
+- 主题切换新增平滑过渡动画（CSS transition）
+
+**📄 PDF 导出增强 (优化 3.6)**
+- 新增封面页（标题、日期、版本号、免责声明）
+- 新增目录页（TOC，自动提取 Markdown 标题层级）
+- 新增页码页脚（`- 1 / N -` 格式）
+
+**📋 新闻列表展示增强 (优化 3.7)**
+- 新闻条目新增情绪标签（🟢 Positive / 🔴 Negative / ⚪ Neutral）
+- 新增按来源分组显示模式
+
+**🔒 安全修复 (来自 PR#5 Devin Review)**
+- 修复 `history_view.py` `_render_diff()` XSS 漏洞（HTML 转义）
+- 修复 `_export_runs_as_zip()` 性能问题（改为按钮触发懒加载）
+- 修复 `run_labels` 重复标签导致 `run_id_map` 丢失条目的 bug
+
+### Added — 代码质量 & 工程化优化
+
+**📝 全面类型注解 (优化 4.2)**
+- 为 `analyzer.py`、`collector.py`、`history.py`、`sentiment.py`、`media_gen.py`、`visualizer.py` 全部公共方法添加类型注解
+- 使用 Python 3.9+ 语法（`list[str]`、`str | None`）
+- 添加 `from __future__ import annotations` 兼容
+
+**⚙️ CI/CD 配置 (优化 4.3)**
+- 新增 `.github/workflows/ci.yml` — GitHub Actions 自动化（lint + test）
+- 新增 `ruff.toml` — Ruff linter/formatter 配置
+- 新增 `.pre-commit-config.yaml` — pre-commit hooks（ruff + trailing whitespace + YAML check）
+
+**📦 现代化依赖管理 (优化 4.4)**
+- 新增 `pyproject.toml` — PEP 621 项目元数据 + 依赖声明
+- 保留 `requirements.txt` 向后兼容
+- 新增 `[project.optional-dependencies] dev` 开发依赖组
+
+**📋 统一日志 (优化 4.5)**
+- `sentiment.py` `__main__` 中全部 `print()` 替换为 `logger`
+
+### Changed
+- 版本号从 v1.9 升级至 v2.0
+- `pyproject.toml` 包含 pytest 和 ruff 工具配置
+
+### Dependencies
+- 开发依赖新增：`pytest>=8.0`、`ruff>=0.8`、`pre-commit>=4.0`（仅 `[dev]` 可选组）
+
+---
+
 ## [v1.9] - 2026-04-08
 
 ### Added — 交互层面全面优化

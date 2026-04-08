@@ -1,55 +1,188 @@
 """
 市场情绪仪表盘组件。
-将情绪分析数据渲染为可视化仪表盘。
+将情绪分析数据渲染为可视化仪表盘，含仪表盘图、雷达图、热力图。
 """
 
+from __future__ import annotations
+
+import html as html_mod
 from datetime import datetime
 
+import plotly.graph_objects as go
 import streamlit as st
 
 from src.i18n import t, sig_label, vix_label
-from src.sentiment import MarketSentimentAnalyzer, SIGNAL_EMOJI
+from src.sentiment import MarketSentimentAnalyzer, SIGNAL_EMOJI, SentimentReport
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _cached_sentiment():
+def _cached_sentiment() -> SentimentReport:
     return MarketSentimentAnalyzer.analyze()
 
 
-def render_asset_card(a):
-    """将 AssetSignal 渲染为美化的卡片 HTML。"""
-    emoji = SIGNAL_EMOJI.get(a.signal, "⚪")
+# -- Mini visualisations for metric cards --------------------------
+
+
+def _sentiment_gauge(score: float) -> go.Figure:
+    """Create a half-gauge chart for overall sentiment score (-1 to +1)."""
+    color = "#22c55e" if score >= 0.2 else "#ef4444" if score <= -0.2 else "#64748b"
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=score,
+        number={"suffix": "", "font": {"size": 28, "color": "#e2e8f0"}},
+        gauge={
+            "axis": {"range": [-1, 1], "tickwidth": 1, "tickcolor": "#475569",
+                     "tickfont": {"color": "#94a3b8", "size": 10}},
+            "bar": {"color": color, "thickness": 0.6},
+            "bgcolor": "#1e293b",
+            "borderwidth": 0,
+            "steps": [
+                {"range": [-1, -0.2], "color": "rgba(239,68,68,0.15)"},
+                {"range": [-0.2, 0.2], "color": "rgba(100,116,139,0.15)"},
+                {"range": [0.2, 1], "color": "rgba(34,197,94,0.15)"},
+            ],
+        },
+    ))
+    fig.update_layout(
+        height=180, margin=dict(l=20, r=20, t=30, b=10),
+        paper_bgcolor="rgba(0,0,0,0)", font={"color": "#e2e8f0"},
+    )
+    return fig
+
+
+# -- Radar chart for sector strength --------------------------------
+
+
+def _sector_radar(sentiment: SentimentReport) -> go.Figure:
+    """Radar chart showing multi-dimensional sector strength comparison."""
+    sector_names: list[str] = []
+    sector_scores: list[float] = []
+    for name, sec in sentiment.sectors.items():
+        short = name.split(" ")[0] if " " in name else name[:12]
+        sector_names.append(short)
+        sector_scores.append(sec.avg_score)
+
+    if not sector_names:
+        fig = go.Figure()
+        fig.update_layout(height=300, template="plotly_dark",
+                          title=t("sector_breakdown"))
+        return fig
+
+    # Close the polygon
+    sector_names_closed = sector_names + [sector_names[0]]
+    sector_scores_closed = sector_scores + [sector_scores[0]]
+
+    fig = go.Figure(go.Scatterpolar(
+        r=sector_scores_closed,
+        theta=sector_names_closed,
+        fill="toself",
+        fillcolor="rgba(59,130,246,0.15)",
+        line=dict(color="#3b82f6", width=2),
+        marker=dict(size=6, color="#60a5fa"),
+    ))
+    fig.update_layout(
+        polar=dict(
+            bgcolor="#0f172a",
+            radialaxis=dict(range=[-1, 1], showticklabels=True,
+                            tickfont=dict(size=9, color="#64748b"),
+                            gridcolor="#1e293b"),
+            angularaxis=dict(tickfont=dict(size=10, color="#cbd5e1"),
+                             gridcolor="#1e293b"),
+        ),
+        height=380, margin=dict(l=60, r=60, t=40, b=40),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+        title=dict(text=t("sector_breakdown") + " Radar",
+                   font=dict(color="#e2e8f0", size=14)),
+    )
+    return fig
+
+
+def _sector_heatmap(sentiment: SentimentReport) -> go.Figure:
+    """Heatmap of sector sentiment scores grouped by region/type."""
+    names: list[str] = []
+    scores: list[float] = []
+    for name, sec in sentiment.sectors.items():
+        names.append(name)
+        scores.append(round(sec.avg_score, 2))
+
+    if not names:
+        fig = go.Figure()
+        fig.update_layout(height=200, template="plotly_dark")
+        return fig
+
+    fig = go.Figure(go.Heatmap(
+        z=[scores],
+        x=names,
+        y=["Sentiment"],
+        colorscale=[
+            [0.0, "#dc2626"], [0.3, "#ef4444"],
+            [0.45, "#64748b"], [0.55, "#64748b"],
+            [0.7, "#22c55e"], [1.0, "#16a34a"],
+        ],
+        zmin=-1, zmax=1,
+        text=[[f"{s:+.2f}" for s in scores]],
+        texttemplate="%{text}",
+        textfont={"size": 11, "color": "#e2e8f0"},
+        hovertemplate="%{x}<br>Score: %{z:+.2f}<extra></extra>",
+        colorbar=dict(
+            title="Score", titlefont=dict(color="#94a3b8"),
+            tickfont=dict(color="#94a3b8"),
+        ),
+    ))
+    fig.update_layout(
+        height=160, margin=dict(l=10, r=10, t=30, b=10),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="#0f172a",
+        xaxis=dict(tickfont=dict(size=9, color="#94a3b8"), tickangle=-45),
+        yaxis=dict(showticklabels=False),
+        title=dict(text="Sector Sentiment Heatmap",
+                   font=dict(color="#e2e8f0", size=14)),
+    )
+    return fig
+
+
+# -- Asset card rendering -------------------------------------------
+
+
+def render_asset_card(a) -> str:
+    """Render an AssetSignal as a styled HTML card with XSS-safe escaping."""
+    emoji = SIGNAL_EMOJI.get(a.signal, "")
     label = sig_label(a.signal)
     day_cls = "positive" if a.change_1d_pct >= 0 else "negative"
     week_cls = "positive" if a.change_5d_pct >= 0 else "negative"
+    name_esc = html_mod.escape(a.name)
+    reason_esc = html_mod.escape(a.reason)
     return (
         f'<div class="asset-card">'
-        f'<div class="asset-name">{emoji} {a.name} — {label} <span style="float:right;font-size:14px;">score <code>{a.score:+.2f}</code></span></div>'
+        f'<div class="asset-name">{emoji} {name_esc} &mdash; {label} '
+        f'<span style="float:right;font-size:14px;">score '
+        f'<code>{a.score:+.2f}</code></span></div>'
         f'<div class="asset-meta">'
         f'{t("col_price")}: <b>{a.price:.2f}</b> &nbsp;|&nbsp; '
-        f'1D: <span class="{day_cls}"><b>{a.change_1d_pct:+.1f}%</b></span> &nbsp;|&nbsp; '
+        f'1D: <span class="{day_cls}"><b>{a.change_1d_pct:+.1f}%</b></span> '
+        f'&nbsp;|&nbsp; '
         f'5D: <span class="{week_cls}"><b>{a.change_5d_pct:+.1f}%</b></span>'
         f'</div>'
-        f'<div class="asset-reason">{a.reason}</div>'
+        f'<div class="asset-reason">{reason_esc}</div>'
         f'</div>'
     )
 
 
-def render_sentiment_tab():
-    """渲染完整的市场情绪 Tab 内容。"""
+def render_sentiment_tab() -> None:
+    """Render the full Market Sentiment tab."""
     st.subheader(t("sentiment_title"))
     st.caption(t("sentiment_caption"))
 
-    # 手动刷新按钮 + 上次更新时间
+    # Manual refresh button + last-updated timestamp
     ctrl_col1, ctrl_col2 = st.columns([1, 3])
     with ctrl_col1:
-        refresh_clicked = st.button(t("refresh_data"), key="refresh_sentiment", use_container_width=True)
+        refresh_clicked = st.button(t("refresh_data"), key="refresh_sentiment",
+                                    use_container_width=True)
     with ctrl_col2:
         last_ts = st.session_state.get("sentiment_last_updated")
         if last_ts:
             st.caption(t("last_updated", time=last_ts))
 
-    # 只在点击刷新或已有缓存时加载
     if refresh_clicked:
         _cached_sentiment.clear()
         st.session_state["sentiment_loaded"] = True
@@ -67,25 +200,22 @@ def render_sentiment_tab():
         st.warning(t("sentiment_unavailable"))
         return
 
-    # -- 顶部总览指标 --
-    overview_cols = st.columns(4)
-    with overview_cols[0]:
-        _sig_emoji = SIGNAL_EMOJI.get(sentiment.overall_signal, "⚪")
-        _sig_label = sig_label(sentiment.overall_signal)
-        st.metric(
-            t("overall_sentiment"),
-            f"{_sig_emoji} {_sig_label}",
-            f"{sentiment.overall_score:+.2f}",
-        )
-    with overview_cols[1]:
-        st.metric(t("bullish"), sentiment.bull_count)
-    with overview_cols[2]:
-        st.metric(t("bearish"), sentiment.bear_count)
-    with overview_cols[3]:
-        _vix_label = vix_label(sentiment.vix_level)
-        st.metric("VIX", f"{sentiment.vix_value:.1f}", _vix_label)
+    # -- Top overview: Gauge + Bull/Bear counts + VIX indicator --
+    gauge_col, stats_col, vix_col = st.columns([2, 1, 1])
 
-    # -- 多空比例条 --
+    with gauge_col:
+        st.plotly_chart(_sentiment_gauge(sentiment.overall_score),
+                        use_container_width=True, key="gauge_chart")
+
+    with stats_col:
+        st.metric(t("bullish"), sentiment.bull_count)
+        st.metric(t("bearish"), sentiment.bear_count)
+
+    with vix_col:
+        _vix_lbl = vix_label(sentiment.vix_level)
+        st.metric("VIX", f"{sentiment.vix_value:.1f}", _vix_lbl)
+
+    # -- Bull / Bear proportion bar --
     total = sentiment.bull_count + sentiment.bear_count + sentiment.neutral_count
     if total > 0:
         bull_pct = sentiment.bull_count / total * 100
@@ -103,7 +233,18 @@ def render_sentiment_tab():
             unsafe_allow_html=True,
         )
 
-    # -- 机会 & 风险 双栏 --
+    # -- Sector Radar + Heatmap --
+    st.markdown("---")
+    radar_col, heat_col = st.columns(2)
+    with radar_col:
+        st.plotly_chart(_sector_radar(sentiment), use_container_width=True,
+                        key="radar_chart")
+    with heat_col:
+        st.plotly_chart(_sector_heatmap(sentiment), use_container_width=True,
+                        key="heatmap_chart")
+
+    # -- Opportunities & Risks --
+    st.markdown("---")
     opp_col, risk_col = st.columns(2)
 
     with opp_col:
@@ -122,22 +263,23 @@ def render_sentiment_tab():
         else:
             st.info(t("no_risks"))
 
-    # -- 各板块详情 --
+    # -- Sector details --
     st.markdown("---")
     st.subheader(t("sector_breakdown"))
     for group_name, sector in sentiment.sectors.items():
-        sector_emoji = SIGNAL_EMOJI.get(sector.signal, "⚪")
+        sector_emoji = SIGNAL_EMOJI.get(sector.signal, "")
         sector_label_text = sig_label(sector.signal)
         with st.expander(
-            f"{sector_emoji} **{group_name}** — {sector_label_text} "
-            f"({t('col_score')}: {sector.avg_score:+.2f} | 🟢{sector.bull_count} ⚪{sector.neutral_count} 🔴{sector.bear_count})",
+            f"{sector_emoji} **{group_name}** &mdash; {sector_label_text} "
+            f"({t('col_score')}: {sector.avg_score:+.2f} | "
+            f"Bull {sector.bull_count} Neutral {sector.neutral_count} Bear {sector.bear_count})",
             expanded=False,
         ):
             if sector.assets:
-                rows = []
+                rows: list[dict[str, str]] = []
                 for a in sorted(sector.assets, key=lambda x: x.score, reverse=True):
                     rows.append({
-                        t("col_signal"): f"{SIGNAL_EMOJI.get(a.signal, '⚪')} {sig_label(a.signal)}",
+                        t("col_signal"): f"{SIGNAL_EMOJI.get(a.signal, '')} {sig_label(a.signal)}",
                         t("col_asset"): a.name,
                         t("col_price"): f"{a.price:.2f}",
                         "1D %": f"{a.change_1d_pct:+.1f}%",

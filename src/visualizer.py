@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import logging
 
+import numpy as np
 import pandas as pd
 import yfinance as yf
 import plotly.graph_objects as go
@@ -33,16 +36,26 @@ ASSET_GROUPS = {
 }
 
 
-def fetch_price_data(tickers: list[str], period: str = "1mo") -> pd.DataFrame:
+def fetch_price_data(
+    tickers: list[str],
+    period: str = "1mo",
+    start: str | None = None,
+    end: str | None = None,
+) -> pd.DataFrame:
     """
-    逐个使用 yf.Ticker().history() 下载收盘价（比 yf.download 更稳定）。
-    返回 DataFrame，列名为 ticker，索引为日期。
+    逐个使用 yf.Ticker().history() 下载收盘价。
+    支持 period 或 start/end 自定义日期范围。
     """
-    logger.info("Fetching price data for %d tickers, period=%s...", len(tickers), period)
-    frames = {}
+    logger.info("Fetching price data for %d tickers, period=%s start=%s end=%s",
+                len(tickers), period, start, end)
+    frames: dict[str, pd.Series] = {}
     for ticker in tickers:
         try:
-            hist = yf.Ticker(ticker).history(period=period)
+            t = yf.Ticker(ticker)
+            if start and end:
+                hist = t.history(start=start, end=end)
+            else:
+                hist = t.history(period=period)
             if hist.empty:
                 logger.warning("  ⚠ No data for %s", ticker)
                 continue
@@ -58,6 +71,25 @@ def fetch_price_data(tickers: list[str], period: str = "1mo") -> pd.DataFrame:
     df = pd.DataFrame(frames)
     logger.info("Combined DataFrame shape: %s", df.shape)
     return df
+
+
+def fetch_ohlcv_data(
+    ticker: str,
+    period: str = "1mo",
+    start: str | None = None,
+    end: str | None = None,
+) -> pd.DataFrame:
+    """Fetch OHLCV data for a single ticker (for candlestick charts)."""
+    try:
+        t = yf.Ticker(ticker)
+        if start and end:
+            hist = t.history(start=start, end=end)
+        else:
+            hist = t.history(period=period)
+        return hist
+    except Exception as e:
+        logger.warning("Failed to fetch OHLCV for %s: %s", ticker, e)
+        return pd.DataFrame()
 
 
 def create_price_chart(df: pd.DataFrame, title: str = "Asset Price Trends") -> go.Figure:
@@ -93,15 +125,112 @@ def create_price_chart(df: pd.DataFrame, title: str = "Asset Price Trends") -> g
     return fig
 
 
+def create_candlestick_chart(
+    ohlcv: pd.DataFrame, title: str = "Candlestick Chart",
+) -> go.Figure:
+    """Create a candlestick (K-line) chart from OHLCV data."""
+    fig = go.Figure()
+    if ohlcv.empty:
+        fig.update_layout(title="暂无数据", template="plotly_dark")
+        return fig
+
+    fig.add_trace(go.Candlestick(
+        x=ohlcv.index,
+        open=ohlcv["Open"],
+        high=ohlcv["High"],
+        low=ohlcv["Low"],
+        close=ohlcv["Close"],
+        increasing_line_color="#22c55e",
+        decreasing_line_color="#ef4444",
+        name="Price",
+    ))
+
+    # Add MA20 overlay
+    if len(ohlcv) >= 20:
+        ma20 = ohlcv["Close"].rolling(window=20).mean()
+        fig.add_trace(go.Scatter(
+            x=ohlcv.index, y=ma20, mode="lines",
+            name="MA20", line=dict(color="#60a5fa", width=1.5),
+        ))
+
+    # Add volume as bar chart on secondary y-axis
+    if "Volume" in ohlcv.columns:
+        colors = [
+            "#22c55e" if c >= o else "#ef4444"
+            for c, o in zip(ohlcv["Close"], ohlcv["Open"])
+        ]
+        fig.add_trace(go.Bar(
+            x=ohlcv.index, y=ohlcv["Volume"], name="Volume",
+            marker_color=colors, opacity=0.4, yaxis="y2",
+        ))
+
+    fig.update_layout(
+        title=title,
+        template="plotly_dark",
+        height=500,
+        showlegend=True,
+        xaxis_rangeslider_visible=False,
+        yaxis=dict(title="Price", side="left"),
+        yaxis2=dict(title="Volume", side="right", overlaying="y",
+                    showgrid=False, range=[0, ohlcv.get("Volume", pd.Series([1])).max() * 4]),
+        margin=dict(l=60, r=60, t=60, b=30),
+    )
+    return fig
+
+
+def create_correlation_matrix(
+    tickers: list[str],
+    names: list[str],
+    period: str = "3mo",
+) -> go.Figure:
+    """Create a correlation heatmap for the given assets."""
+    df = fetch_price_data(tickers, period=period)
+    if df.empty or len(df.columns) < 2:
+        fig = go.Figure()
+        fig.update_layout(title="数据不足", template="plotly_dark")
+        return fig
+
+    # Map ticker columns to display names
+    name_map = dict(zip(tickers, names))
+    df = df.rename(columns=name_map)
+
+    returns = df.pct_change().dropna()
+    corr = returns.corr()
+
+    fig = go.Figure(data=go.Heatmap(
+        z=np.round(corr.values, 2),
+        x=corr.columns.tolist(),
+        y=corr.index.tolist(),
+        colorscale="RdBu_r",
+        zmin=-1, zmax=1,
+        text=np.round(corr.values, 2),
+        texttemplate="%{text}",
+        textfont={"size": 11},
+        hovertemplate="%{x} vs %{y}: %{z:.2f}<extra></extra>",
+    ))
+    fig.update_layout(
+        title="Asset Correlation Matrix",
+        template="plotly_dark",
+        height=500,
+        margin=dict(l=100, r=30, t=60, b=100),
+    )
+    return fig
+
+
 def create_asset_dashboard(
-    selected_groups: list[str], period: str = "1mo"
+    selected_groups: list[str],
+    period: str = "1mo",
+    chart_type: str = "line",
+    start: str | None = None,
+    end: str | None = None,
 ) -> dict[str, go.Figure]:
     """
     为选定的资产类别分别生成图表。
-    返回 {类别名: plotly Figure} 字典。
+    chart_type: 'line' 折线图 | 'candlestick' K线图
     """
-    logger.info("Building dashboard for groups: %s, period=%s", selected_groups, period)
-    figures = {}
+    logger.info("Building dashboard for groups: %s, period=%s, type=%s",
+                selected_groups, period, chart_type)
+    figures: dict[str, go.Figure] = {}
     for group_name in selected_groups:
         assets = ASSET_GROUPS.get(group_name)
         if not assets:
@@ -111,12 +240,20 @@ def create_asset_dashboard(
         tickers = [a["ticker"] for a in assets]
         ticker_to_name = {a["ticker"]: a["name"] for a in assets}
 
-        df = fetch_price_data(tickers, period=period)
-        # 将列名从 ticker 替换为可读名称
-        df = df.rename(columns=ticker_to_name)
-
-        fig = create_price_chart(df, title=group_name)
-        figures[group_name] = fig
+        if chart_type == "candlestick":
+            # Candlestick: one chart per ticker in group
+            for asset in assets:
+                ohlcv = fetch_ohlcv_data(asset["ticker"], period=period,
+                                         start=start, end=end)
+                fig = create_candlestick_chart(
+                    ohlcv, title=f"{group_name} — {asset['name']}",
+                )
+                figures[f"{group_name} — {asset['name']}"] = fig
+        else:
+            df = fetch_price_data(tickers, period=period, start=start, end=end)
+            df = df.rename(columns=ticker_to_name)
+            fig = create_price_chart(df, title=group_name)
+            figures[group_name] = fig
 
     logger.info("Dashboard complete: %d charts generated.", len(figures))
     return figures
