@@ -4,6 +4,56 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [v1.9] - 2026-04-08
+
+### Added — 交互层面全面优化
+
+**📦 模块化拆分 (优化 2.1)**
+- 新增 `src/i18n.py` — 提取 I18N 翻译字典（~200 行）和 `t()` / `sig_label()` / `vix_label()` 函数
+- 新增 `src/styles.py` — 提取全部 CSS 样式（~390 行）+ `inject_styles()` 注入函数
+- 新增 `src/components/newspaper_view.py` — 提取报纸版面渲染逻辑
+- 新增 `src/components/sentiment_dashboard.py` — 提取市场情绪仪表盘
+- 新增 `src/components/charts_view.py` — 提取行情图表组件（含懒加载）
+- 新增 `src/components/history_view.py` — 提取历史记录组件（含 ZIP 导出 & 报告对比）
+- `app.py` 从 1349 行精简至 ~536 行
+
+**📊 分析进度指示器 (优化 2.2)**
+- 新增 `st.progress()` 进度条，展示 5 步分析流程完成百分比
+- 新增步骤药丸条（Step Pills）：✅ 已完成 / ⏳ 进行中 / 待处理，CSS 动画过渡
+- 每个步骤实时更新当前状态文字
+
+**🎛️ 侧边栏分组 & 预设模式 (优化 2.3)**
+- 侧边栏控件按「基础设置」和「高级设置」分组，高级设置默认折叠
+- 新增 3 个一键预设模式：
+  - ⚡ 快速简报 — 3 篇文章，短报告，无音频/PDF
+  - 🔬 深度报告 — 10 篇文章，全功能开启，报纸版面
+  - 🇨🇳 A 股聚焦 — 8 篇文章，中文财经源优先
+- 🔧 自定义模式保留完整手动控制
+
+**🔄 情绪/图表懒加载 (优化 2.4)**
+- 情绪分析和行情图表不再自动加载数据
+- 新增「刷新数据」按钮 + 上次更新时间显示
+- 用户自主决定何时刷新，减少不必要的 API 调用
+
+**📦 历史导出 & 报告对比 (优化 2.5)**
+- 新增批量 ZIP 导出功能 — 将所有报告（含 report.md / metadata.json / PDF / MP3）打包下载
+- 新增两期报告对比视图 — 基于 unified diff 的绿增红删高亮
+- 历史记录列表增加搜索、日期过滤、单条删除
+
+**📱 移动端适配 CSS (优化 2.7)**
+- `@media (max-width: 768px)` — 报纸单栏、Metric 卡片紧凑、进度条竖排
+- `@media (max-width: 480px)` — 报头缩小、副标题堆叠
+
+### Changed
+- 版本号从 v1.8 升级至 v1.9
+- `app.py` 重构 — 从单文件 1349 行拆分为 7 个模块
+- 所有 UI 文本通过 `src/i18n.py` 统一管理
+
+### Dependencies
+- 无新增依赖
+
+---
+
 ## [v1.8] - 2026-04-08
 
 ### Added

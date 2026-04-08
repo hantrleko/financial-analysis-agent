@@ -2,7 +2,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.30+-red.svg)](https://streamlit.io)
-[![Version](https://img.shields.io/badge/version-v1.8-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-v1.9-green.svg)](CHANGELOG.md)
 
 AI 驱动的自动化金融分析系统，集成多源新闻采集、双引擎 LLM 分析、市场情绪评估、语音播报和 PDF 导出。
 
@@ -58,7 +58,7 @@ An AI-powered automated financial analysis system with multi-source news aggrega
 ## 🏗️ Architecture
 
 ```
-app.py              → Streamlit Web UI (main entry)
+app.py              → Streamlit Web UI (~536 lines, modularized)
 main.py             → CLI entry point
 src/
 ├── config.py       → Centralized configuration constants
@@ -70,8 +70,15 @@ src/
 ├── visualizer.py   → Price chart generation (Plotly)
 ├── media_gen.py    → TTS audio + PDF export
 ├── history.py      → Run history management
-└── newspaper.py    → Newspaper layout renderer
-tests/              → Unit tests (pytest)
+├── newspaper.py    → Newspaper layout renderer
+├── i18n.py         → Internationalization (i18n) translation system
+├── styles.py       → Centralized CSS styles + injection
+└── components/
+    ├── newspaper_view.py       → Newspaper layout rendering
+    ├── sentiment_dashboard.py  → Market sentiment dashboard
+    ├── charts_view.py          → Asset price charts (lazy-load)
+    └── history_view.py         → History with ZIP export & diff compare
+tests/              → Unit tests (pytest, 33 tests)
 ```
 
 ---
