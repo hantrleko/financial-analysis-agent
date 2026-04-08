@@ -4,6 +4,52 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [v1.8] - 2026-04-08
+
+### Added
+- **🔧 公共工具模块 (`src/utils.py`)**
+  - 提取 `get_api_key()` / `get_proxy()` 公共函数，消除 collector.py 与 analyzer.py 中的重复代码
+  - 新增 `retry_api_call()` — 带指数退避的 API 调用重试机制，区分可重试错误（429、5xx、timeout）和不可重试错误（401、403）
+
+- **⚡ Gemini 真正流式输出 (`src/analyzer.py`)**
+  - 新增 `_call_gemini_stream()` 方法，使用 `streamGenerateContent?alt=sse` 端点实现真正的 SSE 流式输出
+  - 新增 `_call_openai_compat_stream()` 方法，智谱 GLM 也支持流式输出
+  - `analyze_news_stream()` 现在逐块 yield 文本，Web UI 实时渲染每一个 token
+
+- **🇨🇳 中文财经 RSS 源 (`src/config.py`)**
+  - 新增新浪财经、财联社 (Cls.cn)、东方财富 (Eastmoney) RSS 源
+  - 新增中文 Google News RSS 模板 (`GOOGLE_NEWS_CN_RSS_TEMPLATE`)
+
+- **🤖 Gemini 模型自定义 (`app.py`, `src/analyzer.py`)**
+  - 侧边栏新增 Gemini Model 下拉选择器，支持 gemini-2.5-flash / 2.0-flash / 1.5-pro 等多个模型
+  - 支持通过 `GEMINI_MODEL` 环境变量覆盖默认模型
+
+- **🔁 分析流水线 (`src/pipeline.py`)**
+  - 新增统一分析流水线模块，消除 `main.py` 和 `app.py` 之间的核心逻辑重复
+  - `PipelineConfig` 数据类集中管理所有分析参数
+  - `run_pipeline()` 函数封装完整 5 步流程：采集 → 抓取 → 分析 → 媒体生成 → 保存历史
+
+- **✅ 扩充单元测试 (`tests/`)**
+  - 新增 `test_analyzer.py` — 分析器核心逻辑、LLM 回退机制测试
+  - 新增 `test_sentiment.py` — 情绪评分模型、VIX 分类、反向评分测试
+  - 新增 `test_media_gen.py` — TTS 文本清洗、分段、Emoji 剥离测试
+  - 新增 `test_visualizer.py` — 图表生成、资产分组配置测试
+  - 新增 `test_utils.py` — API Key 获取、代理配置、重试机制测试
+  - 新增 `test_pipeline.py` — 流水线配置数据类测试
+
+- **📖 README.md**
+  - 新增完整项目文档：功能特性、架构说明、快速开始、环境变量、目录结构
+
+### Changed
+- **`main.py` 重构** — 全部 `print()` 替换为 `logger`，使用 `pipeline.run_pipeline()` 统一流程
+- **API 调用增加重试** — collector.py 和 analyzer.py 中的所有外部 API 调用均通过 `retry_api_call()` 包装
+- 版本号从 v1.7 升级至 v1.8
+
+### Dependencies
+- 无新增依赖
+
+---
+
 ## [v1.7] - 2026-03-18
 
 ### Fixed

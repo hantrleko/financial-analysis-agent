@@ -4,45 +4,15 @@ import re
 from datetime import datetime, timezone
 
 import yfinance as yf
-from dotenv import load_dotenv
 
 from src.config import (
     REPORT_SECTORS, SNAPSHOT_TICKERS, PREVIOUS_REPORT_MAX_CHARS,
     TIME_RANGE_PERIOD_MAP, PREVIOUS_REPORT_MAX_AGE_HOURS,
     LLM_PROVIDERS, DEFAULT_LLM_PROVIDER, DEEP_LLM_PROVIDER,
 )
-
-load_dotenv()
+from src.utils import get_api_key, get_proxy, retry_api_call
 
 logger = logging.getLogger(__name__)
-
-
-def _get_api_key(env_key):
-    """从环境变量或 Streamlit secrets 中获取 API Key。"""
-    val = os.getenv(env_key, "")
-    if val:
-        return val
-    try:
-        import streamlit as st
-        return st.secrets.get(env_key, "")
-    except Exception:
-        return ""
-
-
-def _get_proxy():
-    """获取 Gemini API 代理地址。"""
-    proxy = os.getenv("GEMINI_PROXY", "")
-    if not proxy:
-        try:
-            import streamlit as st
-            proxy = st.secrets.get("GEMINI_PROXY", "")
-        except Exception:
-            pass
-    if proxy:
-        logger.info("Using Gemini proxy: %s", proxy)
-        return {"https": proxy, "http": proxy}
-    logger.warning("GEMINI_PROXY not set — Gemini API calls will go direct (may fail in China)")
-    return None
 
 
 class FinancialAnalyzer:
@@ -55,7 +25,7 @@ class FinancialAnalyzer:
         cfg = LLM_PROVIDERS.get(self.provider)
         if not cfg:
             raise ValueError(f"Unknown LLM provider: {self.provider}")
-        api_key = _get_api_key(cfg["env_key"])
+        api_key = get_api_key(cfg["env_key"])
         if not api_key:
             logger.warning("API key %s not set for provider %s", cfg["env_key"], self.provider)
 
@@ -254,8 +224,9 @@ Keep it professional, data-driven, yet engaging."""
         """调用 Google Gemini API，支持代理。"""
         import requests as http_requests
         cfg = LLM_PROVIDERS[provider_key]
-        api_key = _get_api_key(cfg["env_key"])
-        url = f"{cfg['base_url']}/models/{cfg['model']}:generateContent?key={api_key}"
+        api_key = get_api_key(cfg["env_key"])
+        model = os.getenv("GEMINI_MODEL", cfg["model"])
+        url = f"{cfg['base_url']}/models/{model}:generateContent?key={api_key}"
         payload = {
             "contents": [{"parts": [{"text": input_text}]}],
             "generationConfig": {
@@ -266,8 +237,10 @@ Keep it professional, data-driven, yet engaging."""
                 },
             },
         }
-        proxies = _get_proxy()
-        resp = http_requests.post(url, json=payload, timeout=180, proxies=proxies)
+        proxies = get_proxy()
+        resp = retry_api_call(
+            lambda: http_requests.post(url, json=payload, timeout=180, proxies=proxies)
+        )
         if resp.status_code != 200:
             logger.error("Gemini API error %d: %s", resp.status_code, resp.text[:500])
         resp.raise_for_status()
@@ -277,11 +250,53 @@ Keep it professional, data-driven, yet engaging."""
         except (KeyError, IndexError):
             return f"No response from {cfg['name']}."
 
+    def _call_gemini_stream(self, input_text, provider_key="gemini"):
+        """调用 Google Gemini API 流式输出，逞块 yield 文本。"""
+        import requests as http_requests
+        cfg = LLM_PROVIDERS[provider_key]
+        api_key = get_api_key(cfg["env_key"])
+        model = os.getenv("GEMINI_MODEL", cfg["model"])
+        url = f"{cfg['base_url']}/models/{model}:streamGenerateContent?alt=sse&key={api_key}"
+        payload = {
+            "contents": [{"parts": [{"text": input_text}]}],
+            "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 8192,
+                "thinkingConfig": {
+                    "thinkingBudget": 0,
+                },
+            },
+        }
+        proxies = get_proxy()
+        import json as json_mod
+        resp = http_requests.post(url, json=payload, timeout=180, proxies=proxies, stream=True)
+        if resp.status_code != 200:
+            logger.error("Gemini Stream API error %d: %s", resp.status_code, resp.text[:500])
+            resp.raise_for_status()
+
+        for line in resp.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+            # SSE format: "data: {...}"
+            if line.startswith("data: "):
+                json_str = line[6:]
+                try:
+                    chunk_data = json_mod.loads(json_str)
+                    candidates = chunk_data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        for part in parts:
+                            text = part.get("text", "")
+                            if text:
+                                yield text
+                except (json_mod.JSONDecodeError, KeyError, IndexError):
+                    continue
+
     def _call_openai_compat(self, input_text, provider_key):
         """调用 OpenAI 兼容接口（智谱 GLM 等）。"""
         import requests as http_requests
         cfg = LLM_PROVIDERS[provider_key]
-        api_key = _get_api_key(cfg["env_key"])
+        api_key = get_api_key(cfg["env_key"])
         url = f"{cfg['base_url']}/chat/completions"
         headers = {
             "Authorization": f"Bearer {api_key}",
@@ -296,13 +311,55 @@ Keep it professional, data-driven, yet engaging."""
             "temperature": 0.7,
             "max_tokens": 4096,
         }
-        resp = http_requests.post(url, json=payload, headers=headers, timeout=120)
+        resp = retry_api_call(
+            lambda: http_requests.post(url, json=payload, headers=headers, timeout=120)
+        )
         resp.raise_for_status()
         data = resp.json()
         try:
             return data["choices"][0]["message"]["content"]
         except (KeyError, IndexError):
             return f"No response from {cfg['name']}."
+
+    def _call_openai_compat_stream(self, input_text, provider_key):
+        """调用 OpenAI 兼容接口流式输出（智谱 GLM 等）。"""
+        import requests as http_requests
+        import json as json_mod
+        cfg = LLM_PROVIDERS[provider_key]
+        api_key = get_api_key(cfg["env_key"])
+        url = f"{cfg['base_url']}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": cfg["model"],
+            "messages": [
+                {"role": "system", "content": "You are an expert Wall Street Financial Analyst with 20 years of experience."},
+                {"role": "user", "content": input_text},
+            ],
+            "temperature": 0.7,
+            "max_tokens": 4096,
+            "stream": True,
+        }
+        resp = http_requests.post(url, json=payload, headers=headers, timeout=120, stream=True)
+        resp.raise_for_status()
+
+        for line in resp.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+            if line.startswith("data: "):
+                json_str = line[6:]
+                if json_str.strip() == "[DONE]":
+                    break
+                try:
+                    chunk_data = json_mod.loads(json_str)
+                    delta = chunk_data["choices"][0].get("delta", {})
+                    content = delta.get("content", "")
+                    if content:
+                        yield content
+                except (json_mod.JSONDecodeError, KeyError, IndexError):
+                    continue
 
     # ──────────────── 公共 API ────────────────
 
@@ -333,10 +390,30 @@ Keep it professional, data-driven, yet engaging."""
         except Exception as e:
             return f"Analysis failed: {e}"
 
+    def _call_llm_stream(self, input_text, deep_analysis=False):
+        """
+        流式路由 LLM 调用。
+        Gemini 优先，若因地区限制失败则自动回退到智谱 GLM。
+        """
+        provider = DEEP_LLM_PROVIDER if deep_analysis else self.provider
+
+        if provider.startswith("gemini"):
+            try:
+                yield from self._call_gemini_stream(input_text, provider)
+                return
+            except Exception as e:
+                if "location" in str(e).lower() or "FAILED_PRECONDITION" in str(e):
+                    logger.warning("Gemini streaming unavailable (region restriction), falling back to ZhiPu GLM...")
+                    yield from self._call_openai_compat_stream(input_text, "zhipu")
+                    return
+                raise
+        else:
+            yield from self._call_openai_compat_stream(input_text, provider)
+
     def analyze_news_stream(self, news_items, briefing_length="medium", language="en",
                             sectors=None, previous_report=None, deep_analysis=False,
                             on_status=None, time_range="week", previous_report_meta=None):
-        """分析新闻并生成简报（yield 方式）。"""
+        """分析新闻并生成简报（真正流式 yield 方式）。"""
         if not news_items:
             yield "No news to analyze."
             return
@@ -363,8 +440,7 @@ Keep it professional, data-driven, yet engaging."""
         )
 
         try:
-            result = self._call_llm(input_text, deep_analysis=deep_analysis)
-            yield result
+            yield from self._call_llm_stream(input_text, deep_analysis=deep_analysis)
         except Exception as e:
             yield f"Analysis failed: {e}"
 

@@ -3,7 +3,7 @@
 所有可调参数统一在此维护，各模块通过 from src.config import ... 引用。
 """
 
-VERSION = "v1.7"
+VERSION = "v1.8"
 
 # ──────────────────── 抓取参数 ────────────────────
 MAX_SCRAPE_CHARS = 4000       # 每篇文章最大抓取字符数
@@ -15,6 +15,7 @@ SCRAPE_WORKERS = 5            # 并行抓取线程数
 AVAILABLE_SOURCES = [
     "Bloomberg", "Reuters", "AP News", "Yahoo Finance",
     "CNBC", "Financial Times", "Wall Street Journal",
+    "Sina Finance", "Cls.cn", "Eastmoney",
 ]
 
 SOURCE_DOMAINS = {
@@ -25,6 +26,9 @@ SOURCE_DOMAINS = {
     "CNBC": "cnbc.com",
     "Financial Times": "ft.com",
     "Wall Street Journal": "wsj.com",
+    "Sina Finance": "finance.sina.com.cn",
+    "Cls.cn": "cls.cn",
+    "Eastmoney": "eastmoney.com",
 }
 
 RSS_FEEDS = [
@@ -38,11 +42,18 @@ RSS_FEEDS = [
     {"url": "https://rss.nytimes.com/services/xml/rss/nyt/Business.xml", "source": "NYT Business"},
     {"url": "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258", "source": "CNBC (Economy)"},
     {"url": "https://feeds.marketwatch.com/marketwatch/marketpulse", "source": "MarketWatch (Pulse)"},
+    # 中文财经源
+    {"url": "https://finance.sina.com.cn/roll/index.d.html?cid=56588&page=1", "source": "Sina Finance"},
+    {"url": "https://www.cls.cn/rss", "source": "Cls.cn"},
+    {"url": "https://rsshub.app/eastmoney/report", "source": "Eastmoney"},
 ]
 
 # Google News 动态搜索 RSS（按 query 实时构造）
 GOOGLE_NEWS_RSS_TEMPLATE = "https://news.google.com/rss/search?q={query}+when:{time_range}&hl=en-US&gl=US&ceid=US:en"
 GOOGLE_NEWS_TIME_MAP = {"24h": "1d", "week": "7d", "month": "30d"}
+
+# 中文 Google News RSS
+GOOGLE_NEWS_CN_RSS_TEMPLATE = "https://news.google.com/rss/search?q={query}+when:{time_range}&hl=zh-CN&gl=CN&ceid=CN:zh-Hans"
 
 # ──────────────────── 报告板块 ────────────────────
 REPORT_SECTORS = {
@@ -226,3 +237,7 @@ LLM_PROVIDERS = {
 
 DEFAULT_LLM_PROVIDER = "gemini"
 DEEP_LLM_PROVIDER = "gemini"
+
+# API 调用重试配置
+API_MAX_RETRIES = 3           # 最大重试次数
+API_RETRY_BASE_DELAY = 1.0    # 重试基础延迟（秒，指数退避）

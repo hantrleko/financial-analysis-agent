@@ -5,7 +5,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 from difflib import SequenceMatcher
 from email.utils import parsedate_to_datetime
-from dotenv import load_dotenv
 
 from src.config import (
     MAX_SCRAPE_CHARS,
@@ -19,38 +18,9 @@ from src.config import (
     GOOGLE_NEWS_TIME_MAP,
     PAYWALL_DOMAINS,
 )
-
-load_dotenv()
+from src.utils import get_api_key, get_proxy, retry_api_call
 
 logger = logging.getLogger(__name__)
-
-
-def _get_api_key(env_key):
-    """从环境变量或 Streamlit secrets 中获取 API Key。"""
-    val = os.getenv(env_key, "")
-    if val:
-        return val
-    try:
-        import streamlit as st
-        return st.secrets.get(env_key, "")
-    except Exception:
-        return ""
-
-
-def _get_proxy():
-    """获取 Gemini API 代理地址。"""
-    proxy = os.getenv("GEMINI_PROXY", "")
-    if not proxy:
-        try:
-            import streamlit as st
-            proxy = st.secrets.get("GEMINI_PROXY", "")
-        except Exception:
-            pass
-    if proxy:
-        logger.info("Using Gemini proxy: %s", proxy)
-        return {"https": proxy, "http": proxy}
-    logger.warning("GEMINI_PROXY not set — Gemini API calls will go direct (may fail in China)")
-    return None
 
 
 class NewsCollector:
@@ -208,7 +178,7 @@ class NewsCollector:
         """用 Gemini Search Grounding 联网搜索最新金融新闻。"""
         import requests as http_requests
 
-        api_key = _get_api_key("GEMINI_API_KEY")
+        api_key = get_api_key("GEMINI_API_KEY")
         if not api_key:
             logger.warning("GEMINI_API_KEY not set, skipping AI search.")
             return []
@@ -244,8 +214,10 @@ class NewsCollector:
 
         try:
             logger.info("Fetching news via Gemini Search Grounding...")
-            proxies = _get_proxy()
-            resp = http_requests.post(url, json=payload, timeout=60, proxies=proxies)
+            proxies = get_proxy()
+            resp = retry_api_call(
+                lambda: http_requests.post(url, json=payload, timeout=60, proxies=proxies)
+            )
             if resp.status_code != 200:
                 logger.error("Gemini Search API error %d: %s", resp.status_code, resp.text[:500])
             resp.raise_for_status()
