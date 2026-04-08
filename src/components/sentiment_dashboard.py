@@ -140,8 +140,7 @@ def _sector_heatmap(sentiment: SentimentReport) -> go.Figure:
             textfont={"size": 11, "color": "#e2e8f0"},
             hovertemplate="%{x}<br>Score: %{z:+.2f}<extra></extra>",
             colorbar=dict(
-                title="Score",
-                titlefont=dict(color="#94a3b8"),
+                title=dict(text="Score", font=dict(color="#94a3b8")),
                 tickfont=dict(color="#94a3b8"),
             ),
         )
