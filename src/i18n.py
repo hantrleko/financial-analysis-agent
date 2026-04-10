@@ -210,6 +210,7 @@ I18N = {
     "newspaper_theme": {"en": "Newspaper Theme", "zh": "报纸主题"},
     "theme_classic": {"en": "📜 Classic", "zh": "📜 经典"},
     "theme_modern": {"en": "✨ Modern", "zh": "✨ 现代"},
+    "theme_dark": {"en": "🌙 Dark", "zh": "🌙 暗黑"},
     # Charts enhancements
     "chart_type": {"en": "Chart Type", "zh": "图表类型"},
     "chart_line": {"en": "Line Chart", "zh": "折线图"},
@@ -231,6 +232,36 @@ I18N = {
     "sources_label": {"en": "Sources", "zh": "来源"},
     "articles_label": {"en": "Articles", "zh": "文章数"},
     "delete": {"en": "🗑️ Delete", "zh": "🗑️ 删除"},
+    # Dashboard Overview
+    "tab_overview": {"en": "🏠 Overview", "zh": "🏠 概览"},
+    "overview_title": {"en": "📊 Market Dashboard", "zh": "📊 市场仪表盘"},
+    "overview_caption": {
+        "en": "At-a-glance view of global markets, latest analysis, and system status.",
+        "zh": "全球市场概览、最新分析和系统状态一览。",
+    },
+    "overview_last_run": {"en": "Last Analysis", "zh": "上次分析"},
+    "overview_total_runs": {"en": "Total Analyses", "zh": "分析总数"},
+    "overview_sources_count": {"en": "Active Sources", "zh": "活跃来源"},
+    "overview_quick_start": {"en": "Quick Start", "zh": "快速开始"},
+    "overview_quick_start_hint": {
+        "en": "Select a preset from the sidebar and click Run Analysis to get started.",
+        "zh": "从侧边栏选择一个预设，点击「开始分析」即可。",
+    },
+    "overview_recent_analyses": {"en": "Recent Analyses", "zh": "近期分析"},
+    "overview_no_analyses": {
+        "en": "No analyses yet. Run your first analysis to see results here!",
+        "zh": "暂无分析记录。运行首次分析后即可在此查看结果！",
+    },
+    "overview_market_pulse": {"en": "Market Pulse", "zh": "市场脉搏"},
+    # Market Snapshot (sidebar)
+    "market_snapshot": {"en": "📊 Market Snapshot", "zh": "📊 市场快照"},
+    "market_snapshot_loading": {"en": "Loading market data...", "zh": "加载市场数据..."},
+    "market_snapshot_error": {"en": "Unable to load market data", "zh": "无法加载市场数据"},
+    # Markdown export
+    "download_md": {"en": "⬇️ Download Markdown", "zh": "⬇️ 下载 Markdown"},
+    # Auto-refresh
+    "auto_refresh": {"en": "Auto-refresh", "zh": "自动刷新"},
+    "auto_refresh_interval": {"en": "Refresh interval (min)", "zh": "刷新间隔（分钟）"},
 }
 
 

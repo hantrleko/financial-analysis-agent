@@ -13,6 +13,7 @@ from src.collector import NewsCollector
 from src.components.charts_view import render_charts_tab
 from src.components.history_view import render_history_tab
 from src.components.newspaper_view import render_newspaper
+from src.components.overview_dashboard import render_overview_tab
 from src.components.sentiment_dashboard import render_sentiment_tab
 from src.config import (
     AVAILABLE_SOURCES,
@@ -24,7 +25,7 @@ from src.config import (
 from src.history import HistoryManager
 from src.i18n import t
 from src.media_gen import EDGE_VOICE_PRESETS, TTS_ENGINES, VOICE_PRESETS, MediaGenerator
-from src.styles import inject_styles
+from src.styles import inject_styles, render_sidebar_footer
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -268,7 +269,7 @@ with st.sidebar.expander(t("advanced_settings"), expanded=False):
         disabled=not deep_analysis,
         help=t("newspaper_mode_help"),
     )
-    _theme_options = {t("theme_classic"): "classic", t("theme_modern"): "modern"}
+    _theme_options = {t("theme_classic"): "classic", t("theme_modern"): "modern", t("theme_dark"): "dark"}
     _theme_label = st.selectbox(
         t("newspaper_theme"),
         options=list(_theme_options.keys()),
@@ -280,6 +281,8 @@ with st.sidebar.expander(t("advanced_settings"), expanded=False):
 run_clicked = st.sidebar.button(t("run_analysis"), use_container_width=True, type="primary")
 
 st.sidebar.divider()
+
+st.sidebar.markdown(render_sidebar_footer(VERSION.lstrip("v")), unsafe_allow_html=True)
 
 
 @st.dialog(t("update_log"), width="large")
@@ -418,23 +421,40 @@ def display_result(news_items, report, audio_path=None, pdf_path=None, use_newsp
 
     if pdf_path and os.path.exists(pdf_path):
         st.subheader(t("pdf_briefing"))
-        with open(pdf_path, "rb") as f:
+        dl_col1, dl_col2 = st.columns(2)
+        with dl_col1, open(pdf_path, "rb") as f:
             st.download_button(
                 label=t("download_pdf"),
                 data=f,
                 file_name="daily_briefing.pdf",
                 mime="application/pdf",
+                key="cached_pdf_dl",
+            )
+        with dl_col2:
+            st.download_button(
+                label=t("download_md"),
+                data=report,
+                file_name="daily_briefing.md",
+                mime="text/markdown",
+                key="cached_md_dl",
             )
 
 
-tab_analysis, tab_sentiment, tab_charts, tab_history = st.tabs(
+tab_overview, tab_analysis, tab_sentiment, tab_charts, tab_history = st.tabs(
     [
+        t("tab_overview"),
         t("tab_analysis"),
         t("tab_sentiment"),
         t("tab_charts"),
         t("tab_history"),
     ]
 )
+
+with tab_overview:
+    try:
+        render_overview_tab(HISTORY_DIR)
+    except Exception as e:
+        st.error(t("error_occurred", e=e))
 
 with tab_analysis:
     if run_clicked:
@@ -557,12 +577,20 @@ with tab_analysis:
                     )
                     if pdf_path and os.path.exists(pdf_path):
                         st.subheader(t("pdf_briefing"))
-                        with open(pdf_path, "rb") as f:
+                        dl_col1, dl_col2 = st.columns(2)
+                        with dl_col1, open(pdf_path, "rb") as f:
                             st.download_button(
                                 label=t("download_pdf"),
                                 data=f,
                                 file_name="daily_briefing.pdf",
                                 mime="application/pdf",
+                            )
+                        with dl_col2:
+                            st.download_button(
+                                label=t("download_md"),
+                                data=report,
+                                file_name="daily_briefing.md",
+                                mime="text/markdown",
                             )
 
                 render_progress(4, progress_bar, step_label)
@@ -611,10 +639,16 @@ with tab_analysis:
         )
 
 with tab_sentiment:
-    render_sentiment_tab()
+    try:
+        render_sentiment_tab()
+    except Exception as e:
+        st.error(t("error_occurred", e=e))
 
 with tab_charts:
-    render_charts_tab()
+    try:
+        render_charts_tab()
+    except Exception as e:
+        st.error(t("error_occurred", e=e))
 
 with tab_history:
     render_history_tab(HISTORY_DIR)

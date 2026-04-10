@@ -40,6 +40,17 @@ NEWSPAPER_THEMES: dict[str, dict[str, str]] = {
         "body_color": "#374151",
         "footer_color": "#9ca3af",
     },
+    "dark": {
+        "bg": "#0f172a",
+        "fg": "#e2e8f0",
+        "accent": "#3b82f6",
+        "font": '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif',
+        "heading_font": '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        "border": "#334155",
+        "sub_color": "#94a3b8",
+        "body_color": "#cbd5e1",
+        "footer_color": "#64748b",
+    },
 }
 
 

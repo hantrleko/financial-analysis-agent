@@ -1,6 +1,6 @@
 [project]
 name = "financial-analysis-agent"
-version = "2.0.0"
+version = "2.1.0"
 description = "Automated financial intelligence platform — news aggregation, sentiment analysis, and multi-modal report generation."
 readme = "README.md"
 requires-python = ">=3.11"

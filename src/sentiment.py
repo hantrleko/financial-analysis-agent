@@ -49,7 +49,7 @@ class SectorSummary:
     bull_count: int = 0
     bear_count: int = 0
     neutral_count: int = 0
-    assets: list = field(default_factory=list)  # list[AssetSignal]
+    assets: list[AssetSignal] = field(default_factory=list)
 
 
 @dataclass
@@ -63,10 +63,10 @@ class SentimentReport:
     neutral_count: int = 0
     vix_value: float = 0.0
     vix_level: str = "normal"  # low / normal / elevated / high / extreme
-    sectors: dict = field(default_factory=dict)  # {group_name: SectorSummary}
-    opportunities: list = field(default_factory=list)  # list[AssetSignal]
-    risks: list = field(default_factory=list)  # list[AssetSignal]
-    all_assets: list = field(default_factory=list)  # list[AssetSignal]
+    sectors: dict[str, SectorSummary] = field(default_factory=dict)
+    opportunities: list[AssetSignal] = field(default_factory=list)
+    risks: list[AssetSignal] = field(default_factory=list)
+    all_assets: list[AssetSignal] = field(default_factory=list)
     timestamp: str = ""
 
 
