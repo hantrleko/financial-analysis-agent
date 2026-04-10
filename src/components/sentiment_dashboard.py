@@ -189,11 +189,13 @@ def render_sentiment_tab() -> None:
     st.subheader(t("sentiment_title"))
     st.caption(t("sentiment_caption"))
 
-    # Manual refresh button + last-updated timestamp
-    ctrl_col1, ctrl_col2 = st.columns([1, 3])
+    # Manual refresh button + auto-refresh toggle + last-updated timestamp
+    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([1, 1, 2])
     with ctrl_col1:
         refresh_clicked = st.button(t("refresh_data"), key="refresh_sentiment", use_container_width=True)
     with ctrl_col2:
+        auto_refresh = st.checkbox(t("auto_refresh"), key="sentiment_auto_refresh", value=False)
+    with ctrl_col3:
         last_ts = st.session_state.get("sentiment_last_updated")
         if last_ts:
             st.caption(t("last_updated", time=last_ts))
@@ -203,6 +205,18 @@ def render_sentiment_tab() -> None:
         st.session_state["sentiment_loaded"] = True
         st.session_state["sentiment_last_updated"] = datetime.now().strftime("%H:%M:%S")
         st.rerun()
+
+    # Auto-refresh via st.fragment / rerun timer
+    if auto_refresh and st.session_state.get("sentiment_loaded", False):
+        import time as _time
+
+        _interval_mins = 5
+        _last_auto = st.session_state.get("sentiment_last_auto_ts", 0)
+        _now = _time.time()
+        if _now - _last_auto > _interval_mins * 60:
+            st.session_state["sentiment_last_auto_ts"] = _now
+            _cached_sentiment.clear()
+            st.session_state["sentiment_last_updated"] = datetime.now().strftime("%H:%M:%S")
 
     if not st.session_state.get("sentiment_loaded", False):
         st.info(t("click_refresh"))

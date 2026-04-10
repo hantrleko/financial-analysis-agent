@@ -10,6 +10,8 @@ APP_CSS = """
 /* ── 全局字体 & 平滑 ── */
 html, body, [class*="st-"] {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
 }
 
 /* ── 侧边栏美化 ── */
@@ -21,6 +23,44 @@ section[data-testid="stSidebar"] label {
     color: #c8d6e5 !important;
 }
 
+/* ── 侧边栏底部版本信息 ── */
+.sidebar-footer {
+    position: fixed;
+    bottom: 0;
+    width: inherit;
+    padding: 12px 16px;
+    border-top: 1px solid #334155;
+    background: linear-gradient(180deg, rgba(15,23,36,0.9) 0%, #0f1724 100%);
+    backdrop-filter: blur(8px);
+    z-index: 999;
+}
+.sidebar-footer .footer-content {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #64748b;
+}
+.sidebar-footer .footer-content a {
+    color: #60a5fa;
+    text-decoration: none;
+    transition: color 0.2s;
+}
+.sidebar-footer .footer-content a:hover {
+    color: #93c5fd;
+}
+.sidebar-footer .footer-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    background: rgba(34,197,94,0.15);
+    color: #22c55e;
+    font-weight: 600;
+}
+
 /* ── Metric 卡片 ── */
 div[data-testid="stMetric"] {
     background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
@@ -28,9 +68,14 @@ div[data-testid="stMetric"] {
     border-radius: 12px;
     padding: 16px 20px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+div[data-testid="stMetric"]:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
 }
 div[data-testid="stMetric"] label {
-    color: #cbd5e1 !important;  /* WCAG AA: raised from #94a3b8 → #cbd5e1 (7.5:1) */
+    color: #cbd5e1 !important;
     font-size: 13px !important;
     font-weight: 500 !important;
 }
@@ -44,6 +89,10 @@ button[data-baseweb="tab"] {
     font-size: 15px !important;
     font-weight: 600 !important;
     padding: 10px 20px !important;
+    transition: all 0.2s ease;
+}
+button[data-baseweb="tab"]:hover {
+    background: rgba(59,130,246,0.08) !important;
 }
 
 /* ── Expander 美化 ── */
@@ -51,6 +100,10 @@ details[data-testid="stExpander"] {
     border: 1px solid #334155 !important;
     border-radius: 10px !important;
     margin-bottom: 8px;
+    transition: border-color 0.2s ease;
+}
+details[data-testid="stExpander"]:hover {
+    border-color: #475569 !important;
 }
 
 /* ── 按钮美化 ── */
@@ -72,10 +125,11 @@ section[data-testid="stSidebar"] .stButton > button:hover {
     border-radius: 10px;
     padding: 14px 18px;
     margin-bottom: 10px;
-    transition: border-color 0.2s ease;
+    transition: border-color 0.2s ease, transform 0.2s ease;
 }
 .asset-card:hover {
     border-color: #60a5fa;
+    transform: translateX(2px);
 }
 .asset-card .asset-name {
     font-weight: 700;
@@ -83,12 +137,12 @@ section[data-testid="stSidebar"] .stButton > button:hover {
     margin-bottom: 4px;
 }
 .asset-card .asset-meta {
-    color: #cbd5e1;  /* WCAG AA: raised from #94a3b8 */
+    color: #cbd5e1;
     font-size: 13px;
     line-height: 1.6;
 }
 .asset-card .asset-reason {
-    color: #94a3b8;  /* WCAG AA: raised from #64748b */
+    color: #94a3b8;
     font-size: 12px;
     font-style: italic;
     margin-top: 4px;
@@ -113,6 +167,7 @@ section[data-testid="stSidebar"] .stButton > button:hover {
     font-size: 13px;
     font-weight: 600;
     min-width: 50px;
+    transition: width 0.6s ease;
 }
 
 /* ── 分隔线 ── */
@@ -149,7 +204,7 @@ hr {
     font-weight: 500;
     background: #1e293b;
     border: 1px solid #334155;
-    color: #94a3b8;  /* WCAG AA: raised from #64748b */
+    color: #94a3b8;
     transition: all 0.3s ease;
 }
 .progress-step.active {
@@ -157,11 +212,17 @@ hr {
     border-color: #60a5fa;
     color: #ffffff;
     box-shadow: 0 2px 8px rgba(59,130,246,0.3);
+    animation: pulse-glow 2s infinite;
 }
 .progress-step.done {
     background: linear-gradient(135deg, #065f46 0%, #059669 100%);
     border-color: #34d399;
     color: #ffffff;
+}
+
+@keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 2px 8px rgba(59,130,246,0.3); }
+    50% { box-shadow: 0 2px 16px rgba(59,130,246,0.5); }
 }
 
 /* ── 对比视图 ── */
@@ -184,6 +245,169 @@ hr {
 * {
     transition: background-color 0.3s ease, color 0.2s ease, border-color 0.3s ease;
 }
+
+/* ── 骨架屏加载动画 ── */
+@keyframes skeleton-shimmer {
+    0% { background-position: -200px 0; }
+    100% { background-position: calc(200px + 100%) 0; }
+}
+.skeleton-line {
+    height: 14px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #1e293b 0%, #334155 50%, #1e293b 100%);
+    background-size: 200px 100%;
+    animation: skeleton-shimmer 1.5s ease-in-out infinite;
+    margin-bottom: 10px;
+}
+.skeleton-card {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border: 1px solid #334155;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 12px;
+}
+.skeleton-card .skeleton-line:first-child { width: 60%; height: 18px; }
+.skeleton-card .skeleton-line:nth-child(2) { width: 90%; }
+.skeleton-card .skeleton-line:nth-child(3) { width: 75%; }
+
+/* ── Dashboard 概览卡片 ── */
+.overview-card {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border: 1px solid #334155;
+    border-radius: 14px;
+    padding: 20px 24px;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+.overview-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 14px 14px 0 0;
+}
+.overview-card.card-blue::before { background: linear-gradient(90deg, #3b82f6, #60a5fa); }
+.overview-card.card-green::before { background: linear-gradient(90deg, #22c55e, #4ade80); }
+.overview-card.card-amber::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.overview-card.card-red::before { background: linear-gradient(90deg, #ef4444, #f87171); }
+.overview-card.card-purple::before { background: linear-gradient(90deg, #8b5cf6, #a78bfa); }
+
+.overview-card:hover {
+    border-color: #475569;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+.overview-card .card-icon {
+    font-size: 28px;
+    margin-bottom: 8px;
+}
+.overview-card .card-value {
+    font-size: 24px;
+    font-weight: 800;
+    color: #e2e8f0;
+    margin-bottom: 2px;
+}
+.overview-card .card-label {
+    font-size: 12px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
+}
+
+/* ── 市场快照迷你组件 ── */
+.market-ticker {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0;
+}
+.market-ticker .tick-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(30,41,59,0.8);
+    border: 1px solid #334155;
+    white-space: nowrap;
+}
+.market-ticker .tick-item.up {
+    color: #22c55e;
+    border-color: rgba(34,197,94,0.3);
+}
+.market-ticker .tick-item.down {
+    color: #ef4444;
+    border-color: rgba(239,68,68,0.3);
+}
+.market-ticker .tick-item .tick-name {
+    color: #94a3b8;
+    font-weight: 500;
+    font-size: 10px;
+}
+
+/* ── 滚动到顶部按钮 ── */
+.scroll-top-btn {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    box-shadow: 0 4px 12px rgba(59,130,246,0.4);
+    z-index: 9999;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s ease;
+}
+.scroll-top-btn.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+.scroll-top-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(59,130,246,0.5);
+}
+
+/* ── 状态徽标 ── */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.status-badge.online {
+    background: rgba(34,197,94,0.15);
+    color: #22c55e;
+}
+.status-badge.offline {
+    background: rgba(239,68,68,0.15);
+    color: #ef4444;
+}
+.status-badge .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+}
+.status-badge.online .dot { background: #22c55e; }
+.status-badge.offline .dot { background: #ef4444; }
 
 /* ═══════════════ 报纸版面 ═══════════════ */
 .newspaper {
@@ -346,7 +570,6 @@ hr {
     .np-masthead-title { font-size: 24px !important; letter-spacing: 2px !important; }
     .np-headline { font-size: 22px !important; }
 
-    /* Metric 卡片在小屏上堆叠 */
     div[data-testid="stMetric"] {
         padding: 12px 14px;
     }
@@ -354,7 +577,6 @@ hr {
         font-size: 18px !important;
     }
 
-    /* 资产卡片适配 */
     .asset-card {
         padding: 10px 14px;
     }
@@ -365,19 +587,16 @@ hr {
         font-size: 12px;
     }
 
-    /* 情绪条在小屏上允许换行数字 */
     .sentiment-bar > div {
         font-size: 11px;
         min-width: 40px;
     }
 
-    /* Tab 按钮在小屏上缩小间距 */
     button[data-baseweb="tab"] {
         font-size: 13px !important;
         padding: 8px 12px !important;
     }
 
-    /* 进度步骤条适配 */
     .progress-steps {
         flex-direction: column;
         gap: 4px;
@@ -386,6 +605,20 @@ hr {
         font-size: 12px;
         padding: 5px 10px;
     }
+
+    .overview-card .card-value {
+        font-size: 20px;
+    }
+
+    .sidebar-footer {
+        position: relative;
+        margin-top: 20px;
+    }
+
+    .market-ticker .tick-item {
+        font-size: 10px;
+        padding: 2px 6px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -393,10 +626,62 @@ hr {
     .np-headline { font-size: 18px !important; }
     .np-masthead-sub { flex-direction: column; gap: 2px; }
 }
+
+/* ── 打印优化 ── */
+@media print {
+    .newspaper {
+        box-shadow: none;
+        border: 1px solid #ccc;
+    }
+    .sidebar-footer,
+    .scroll-top-btn,
+    .stButton,
+    section[data-testid="stSidebar"] {
+        display: none !important;
+    }
+}
 </style>
+"""
+
+# 骨架屏 HTML 模板
+SKELETON_CARDS_HTML = """
+<div class="skeleton-card">
+    <div class="skeleton-line"></div>
+    <div class="skeleton-line"></div>
+    <div class="skeleton-line"></div>
+</div>
+<div class="skeleton-card">
+    <div class="skeleton-line"></div>
+    <div class="skeleton-line"></div>
+    <div class="skeleton-line"></div>
+</div>
 """
 
 
 def inject_styles():
     """将全局 CSS 注入 Streamlit 页面。"""
     st.markdown(APP_CSS, unsafe_allow_html=True)
+
+
+def render_skeleton(count: int = 2) -> str:
+    """生成骨架屏加载占位 HTML。"""
+    card = (
+        '<div class="skeleton-card">'
+        '<div class="skeleton-line"></div>'
+        '<div class="skeleton-line"></div>'
+        '<div class="skeleton-line"></div>'
+        "</div>"
+    )
+    return card * count
+
+
+def render_sidebar_footer(version: str) -> str:
+    """渲染侧边栏底部版本信息 HTML。"""
+    return (
+        '<div class="sidebar-footer">'
+        '<div class="footer-content">'
+        f'<span class="footer-badge">v{version}</span>'
+        "<span>AI-Powered Financial Intelligence</span>"
+        "</div>"
+        "</div>"
+    )

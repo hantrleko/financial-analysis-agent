@@ -91,11 +91,13 @@ def render_charts_tab() -> None:
         custom_start = _start.isoformat() if _start else None
         custom_end = _end.isoformat() if _end else None
 
-    # 手动刷新按钮
-    ctrl_col1, ctrl_col2 = st.columns([1, 3])
+    # 手动刷新按钮 + 自动刷新 toggle
+    ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([1, 1, 2])
     with ctrl_col1:
         refresh_clicked = st.button(t("refresh_data"), key="refresh_charts", use_container_width=True)
     with ctrl_col2:
+        auto_refresh = st.checkbox(t("auto_refresh"), key="charts_auto_refresh", value=False)
+    with ctrl_col3:
         last_ts = st.session_state.get("charts_last_updated")
         if last_ts:
             st.caption(t("last_updated", time=last_ts))
@@ -105,6 +107,18 @@ def render_charts_tab() -> None:
         st.session_state["charts_loaded"] = True
         st.session_state["charts_last_updated"] = datetime.now().strftime("%H:%M:%S")
         st.rerun()
+
+    # Auto-refresh timer
+    if auto_refresh and st.session_state.get("charts_loaded", False):
+        import time as _time
+
+        _interval_mins = 5
+        _last_auto = st.session_state.get("charts_last_auto_ts", 0)
+        _now = _time.time()
+        if _now - _last_auto > _interval_mins * 60:
+            st.session_state["charts_last_auto_ts"] = _now
+            _cached_asset_dashboard.clear()
+            st.session_state["charts_last_updated"] = datetime.now().strftime("%H:%M:%S")
 
     if not st.session_state.get("charts_loaded", False):
         st.info(t("click_refresh_charts"))
