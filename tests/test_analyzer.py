@@ -119,3 +119,65 @@ def test_gemini_generation_config_disabled_thinking(monkeypatch):
     config = analyzer._gemini_generation_config()
     assert config["thinkingConfig"]["thinkingBudget"] == 0
     assert config["maxOutputTokens"] == 4096
+
+
+def test_extract_gemini_text_max_tokens_finish(caplog):
+    """_extract_gemini_text should log warning when finishReason is MAX_TOKENS."""
+    import logging
+
+    data = {
+        "candidates": [
+            {
+                "finishReason": "MAX_TOKENS",
+                "content": {
+                    "parts": [
+                        {"text": "Truncated content"},
+                    ]
+                },
+            }
+        ]
+    }
+    with caplog.at_level(logging.WARNING):
+        result = FinancialAnalyzer._extract_gemini_text(data)
+    assert result == "Truncated content"
+    assert "MAX_TOKENS" in caplog.text
+
+
+def test_extract_gemini_text_stop_no_warning(caplog):
+    """_extract_gemini_text should NOT warn when finishReason is STOP."""
+    import logging
+
+    data = {
+        "candidates": [
+            {
+                "finishReason": "STOP",
+                "content": {"parts": [{"text": "Complete response"}]},
+            }
+        ]
+    }
+    with caplog.at_level(logging.WARNING):
+        result = FinancialAnalyzer._extract_gemini_text(data)
+    assert result == "Complete response"
+    assert "truncated" not in caplog.text.lower()
+
+
+def test_system_instruction_constant():
+    """GEMINI_SYSTEM_INSTRUCTION should exist and contain key guidance."""
+    from src.analyzer import GEMINI_SYSTEM_INSTRUCTION
+
+    assert "Financial Analyst" in GEMINI_SYSTEM_INSTRUCTION
+    assert "Never truncate" in GEMINI_SYSTEM_INSTRUCTION
+
+
+def test_build_input_no_role_instruction():
+    """_build_input should NOT contain role description (moved to systemInstruction)."""
+    analyzer = FinancialAnalyzer()
+    news_ctx = "--- Article 1 ---\nTitle: Test\nSummary: test\n"
+    result = analyzer._build_input(
+        news_context=news_ctx,
+        briefing_length="short",
+        language="en",
+        sectors=None,
+    )
+    assert "You are an expert" not in result
+    assert "Collected News Articles" in result

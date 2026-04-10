@@ -25,6 +25,16 @@ from src.utils import get_api_key, get_proxy, retry_api_call
 
 logger = logging.getLogger(__name__)
 
+# Gemini systemInstruction — 分离系统角色指令，提高模型对输出要求的遵从度
+GEMINI_SYSTEM_INSTRUCTION = (
+    "You are an expert Wall Street Financial Analyst and Chief Investment Strategist "
+    "with 20 years of experience at a top-tier investment bank. "
+    "You produce institutional-grade research briefings known for their precision, depth, and actionable insights. "
+    "CRITICAL: You MUST follow the output length and section requirements specified in the user's task. "
+    "Never truncate, abbreviate, or produce placeholder content. "
+    "If asked for a detailed report, produce a FULL detailed report with all sections completed in depth."
+)
+
 
 class FinancialAnalyzer:
     def __init__(self, provider: str | None = None, briefing_length: str = "medium") -> None:
@@ -214,7 +224,6 @@ Keep it professional, data-driven, yet engaging."""
         sec = self._sector_instruction(sectors)
 
         parts = [
-            "You are an expert Wall Street Financial Analyst and Chief Investment Strategist with 20 years of experience at a top-tier investment bank. You produce institutional-grade research briefings known for their precision, depth, and actionable insights.",
             f"\n## Collected News Articles\n{news_context}",
         ]
 
@@ -284,9 +293,18 @@ Keep it professional, data-driven, yet engaging."""
 
     @staticmethod
     def _extract_gemini_text(data: dict, provider_name: str = "Gemini") -> str:
-        """从 Gemini 响应中提取非 thought 的 text 部分。"""
+        """从 Gemini 响应中提取非 thought 的 text 部分。检查 finishReason 并记录截断警告。"""
         try:
-            parts = data["candidates"][0]["content"]["parts"]
+            candidate = data["candidates"][0]
+            # 检查 finishReason — 可能是 MAX_TOKENS / SAFETY / RECITATION 等
+            finish_reason = candidate.get("finishReason", "")
+            if finish_reason and finish_reason not in ("STOP", "END_TURN"):
+                logger.warning(
+                    "Gemini response truncated: finishReason=%s (model may have hit token limit)",
+                    finish_reason,
+                )
+
+            parts = candidate["content"]["parts"]
             text_parts = []
             for part in parts:
                 # 过滤掉 thought summary 部分（thought == true）
@@ -302,7 +320,7 @@ Keep it professional, data-driven, yet engaging."""
             return f"No response from {provider_name}."
 
     def _call_gemini(self, input_text: str, provider_key: str = "gemini") -> str:
-        """调用 Google Gemini API，支持代理。"""
+        """调用 Google Gemini API，支持代理。使用 systemInstruction 分离角色指令。"""
         import requests as http_requests
 
         cfg = LLM_PROVIDERS[provider_key]
@@ -310,6 +328,13 @@ Keep it professional, data-driven, yet engaging."""
         model = os.getenv("GEMINI_MODEL", cfg["model"])
         url = f"{cfg['base_url']}/models/{model}:generateContent?key={api_key}"
         payload = {
+            "systemInstruction": {
+                "parts": [
+                    {
+                        "text": GEMINI_SYSTEM_INSTRUCTION,
+                    }
+                ]
+            },
             "contents": [{"parts": [{"text": input_text}]}],
             "generationConfig": self._gemini_generation_config(),
         }
@@ -322,7 +347,7 @@ Keep it professional, data-driven, yet engaging."""
         return self._extract_gemini_text(data, cfg["name"])
 
     def _call_gemini_stream(self, input_text: str, provider_key: str = "gemini") -> Generator[str, None, None]:
-        """调用 Google Gemini API 流式输出，逐块 yield 文本。自动过滤 thought 部分。"""
+        """调用 Google Gemini API 流式输出，逐块 yield 文本。自动过滤 thought 部分，检查 finishReason。"""
         import requests as http_requests
 
         cfg = LLM_PROVIDERS[provider_key]
@@ -330,6 +355,13 @@ Keep it professional, data-driven, yet engaging."""
         model = os.getenv("GEMINI_MODEL", cfg["model"])
         url = f"{cfg['base_url']}/models/{model}:streamGenerateContent?alt=sse&key={api_key}"
         payload = {
+            "systemInstruction": {
+                "parts": [
+                    {
+                        "text": GEMINI_SYSTEM_INSTRUCTION,
+                    }
+                ]
+            },
             "contents": [{"parts": [{"text": input_text}]}],
             "generationConfig": self._gemini_generation_config(),
         }
@@ -356,6 +388,13 @@ Keep it professional, data-driven, yet engaging."""
                     chunk_data = json_mod.loads(json_str)
                     candidates = chunk_data.get("candidates", [])
                     if candidates:
+                        # 检查 finishReason
+                        finish_reason = candidates[0].get("finishReason", "")
+                        if finish_reason and finish_reason not in ("STOP", "END_TURN", ""):
+                            logger.warning(
+                                "Gemini stream truncated: finishReason=%s",
+                                finish_reason,
+                            )
                         parts = candidates[0].get("content", {}).get("parts", [])
                         for part in parts:
                             # 跳过 thought summary 部分
@@ -384,7 +423,7 @@ Keep it professional, data-driven, yet engaging."""
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are an expert Wall Street Financial Analyst with 20 years of experience.",
+                    "content": GEMINI_SYSTEM_INSTRUCTION,
                 },
                 {"role": "user", "content": input_text},
             ],
@@ -395,7 +434,11 @@ Keep it professional, data-driven, yet engaging."""
         resp.raise_for_status()
         data = resp.json()
         try:
-            return data["choices"][0]["message"]["content"]
+            content = data["choices"][0]["message"]["content"]
+            finish = data["choices"][0].get("finish_reason", "")
+            if finish and finish != "stop":
+                logger.warning("OpenAI-compat response truncated: finish_reason=%s", finish)
+            return content
         except (KeyError, IndexError):
             return f"No response from {cfg['name']}."
 
@@ -418,7 +461,7 @@ Keep it professional, data-driven, yet engaging."""
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are an expert Wall Street Financial Analyst with 20 years of experience.",
+                    "content": GEMINI_SYSTEM_INSTRUCTION,
                 },
                 {"role": "user", "content": input_text},
             ],

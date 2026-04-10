@@ -219,9 +219,6 @@ class NewsCollector:
             "generationConfig": {
                 "temperature": 0.2,
                 "maxOutputTokens": 4096,
-                "thinkingConfig": {
-                    "thinkingBudget": 0,
-                },
             },
         }
 
@@ -234,7 +231,9 @@ class NewsCollector:
             resp.raise_for_status()
             data = resp.json()
 
-            text = data["candidates"][0]["content"]["parts"][0].get("text", "")
+            # 过滤 thought 部分，只提取实际文本
+            raw_parts = data["candidates"][0]["content"]["parts"]
+            text = "".join(p.get("text", "") for p in raw_parts if not p.get("thought", False))
             grounding = data["candidates"][0].get("groundingMetadata", {})
             chunks = grounding.get("groundingChunks", [])
 
