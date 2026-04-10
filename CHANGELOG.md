@@ -4,6 +4,50 @@ All notable changes to this project will be documented in this file.
 
 ---
 
+## [v2.2] - 2026-04-10
+
+### Fixed — Gemini Thinking & Report Depth
+
+**🧠 Gemini 2.5 Thinking 修复 (Critical)**
+- **修复 `thinkingBudget: 0` 导致深度报告过短的问题**：之前所有 Gemini 调用硬编码 `thinkingBudget: 0`，完全禁用了模型的思考能力，导致"深度报告"输出内容极短
+- 默认改为动态思考 (`thinkingBudget: -1`)，让 Gemini 2.5 根据任务复杂度自动分配思考预算
+- 新增 `GEMINI_THINKING_BUDGET` 环境变量，用户可精细控制思考预算 (0 = 关闭, -1 = 动态, 128-24576 = 自定义)
+
+**🔍 流式输出 Thought 过滤**
+- 流式和非流式 Gemini 响应均自动过滤 `thought: true` 部分，防止思考摘要混入最终报告
+- 新增 `_extract_gemini_text()` 静态方法，统一处理 Gemini 响应中 thought/text 部分的分离
+
+**📏 按报告长度动态调整 Token 上限**
+- `maxOutputTokens` 不再硬编码为 8192，而是根据 `briefing_length` 动态调整：
+  - short: 2048 (Gemini) / 1024 (OpenAI-compat)
+  - medium: 4096 / 2048
+  - detailed: 16384 / 8192
+- 确保深度报告有足够的 token 空间输出完整内容
+
+**📝 深度报告 Prompt 强化**
+- "detailed" 模式 prompt 从简单的 `~800 words` 改为机构级要求，每个章节标注最低字数
+- 明确要求 "不要截断、不要省略、每个章节必须实质性完整"
+- 7 个章节均标注了最低字数要求 (150+, 200+, 100+, 100+, 100+, 80+, 80+)
+
+**⏱️ 超时增加**
+- Gemini API 调用超时从 180s 提升到 300s，适应深度思考模式下的较长响应时间
+- OpenAI 兼容接口超时从 120s 提升到 180s
+
+### Added — 新增测试
+- 新增 5 个单元测试覆盖 Gemini thinking 相关逻辑：
+  - `test_extract_gemini_text_filters_thoughts` — 验证 thought 过滤
+  - `test_extract_gemini_text_no_parts` — 验证 fallback 行为
+  - `test_gemini_generation_config_dynamic_thinking` — 验证动态思考配置
+  - `test_gemini_generation_config_explicit_budget` — 验证自定义预算
+  - `test_gemini_generation_config_disabled_thinking` — 验证关闭思考
+- 测试总数从 33 增加到 38
+
+### Changed
+- `.env.example` 新增 `GEMINI_THINKING_BUDGET` 等配置文档
+- Version bump: v2.1 → v2.2
+
+---
+
 ## [v2.0] - 2026-04-08
 
 ### Added — 设计展示层面 & 代码质量全面优化

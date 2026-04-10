@@ -3,7 +3,7 @@
 所有可调参数统一在此维护，各模块通过 from src.config import ... 引用。
 """
 
-VERSION = "v2.1"
+VERSION = "v2.2"
 
 # ──────────────────── 抓取参数 ────────────────────
 MAX_SCRAPE_CHARS = 4000  # 每篇文章最大抓取字符数
@@ -264,3 +264,20 @@ DEEP_LLM_PROVIDER = "gemini"
 # API 调用重试配置
 API_MAX_RETRIES = 3  # 最大重试次数
 API_RETRY_BASE_DELAY = 1.0  # 重试基础延迟（秒，指数退避）
+
+# ──────────────────── Gemini Thinking 配置 ────────────────────
+# thinkingBudget: -1 = 动态（默认，让模型自行决定）, 0 = 关闭思考
+# 2.5 Flash 范围: 0 ~ 24576, 2.5 Pro 范围: 128 ~ 32768
+GEMINI_THINKING_BUDGET = -1  # 默认启用动态思考
+
+# ──────────────────── 不同报告长度的 maxOutputTokens ────────────────────
+GEMINI_MAX_OUTPUT_TOKENS = {
+    "short": 2048,
+    "medium": 4096,
+    "detailed": 16384,
+}
+OPENAI_COMPAT_MAX_TOKENS = {
+    "short": 1024,
+    "medium": 2048,
+    "detailed": 8192,
+}
