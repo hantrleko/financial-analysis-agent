@@ -65,3 +65,57 @@ def test_gemini_model_env_override(monkeypatch):
     import os
 
     assert os.getenv("GEMINI_MODEL") == "gemini-1.5-pro"
+
+
+def test_extract_gemini_text_filters_thoughts():
+    """_extract_gemini_text should skip thought parts and only return answer text."""
+    data = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {"text": "Let me think about this...", "thought": True},
+                        {"text": "Here is the actual answer."},
+                        {"text": " And more content.", "thought": False},
+                    ]
+                }
+            }
+        ]
+    }
+    result = FinancialAnalyzer._extract_gemini_text(data)
+    assert "Let me think" not in result
+    assert "Here is the actual answer." in result
+    assert "And more content." in result
+
+
+def test_extract_gemini_text_no_parts():
+    """_extract_gemini_text should return fallback when no valid parts."""
+    data = {"candidates": [{"content": {"parts": [{"text": "only thought", "thought": True}]}}]}
+    result = FinancialAnalyzer._extract_gemini_text(data, "TestModel")
+    assert result == "No response from TestModel."
+
+
+def test_gemini_generation_config_dynamic_thinking():
+    """Default thinkingBudget=-1 should not include thinkingConfig."""
+    analyzer = FinancialAnalyzer(briefing_length="detailed")
+    config = analyzer._gemini_generation_config()
+    assert "thinkingConfig" not in config
+    assert config["maxOutputTokens"] == 16384
+
+
+def test_gemini_generation_config_explicit_budget(monkeypatch):
+    """Explicit thinkingBudget via env should be set in config."""
+    monkeypatch.setenv("GEMINI_THINKING_BUDGET", "4096")
+    analyzer = FinancialAnalyzer(briefing_length="short")
+    config = analyzer._gemini_generation_config()
+    assert config["thinkingConfig"]["thinkingBudget"] == 4096
+    assert config["maxOutputTokens"] == 2048
+
+
+def test_gemini_generation_config_disabled_thinking(monkeypatch):
+    """thinkingBudget=0 should explicitly disable thinking."""
+    monkeypatch.setenv("GEMINI_THINKING_BUDGET", "0")
+    analyzer = FinancialAnalyzer(briefing_length="medium")
+    config = analyzer._gemini_generation_config()
+    assert config["thinkingConfig"]["thinkingBudget"] == 0
+    assert config["maxOutputTokens"] == 4096

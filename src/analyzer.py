@@ -11,7 +11,10 @@ import yfinance as yf
 from src.config import (
     DEEP_LLM_PROVIDER,
     DEFAULT_LLM_PROVIDER,
+    GEMINI_MAX_OUTPUT_TOKENS,
+    GEMINI_THINKING_BUDGET,
     LLM_PROVIDERS,
+    OPENAI_COMPAT_MAX_TOKENS,
     PREVIOUS_REPORT_MAX_AGE_HOURS,
     PREVIOUS_REPORT_MAX_CHARS,
     REPORT_SECTORS,
@@ -24,8 +27,9 @@ logger = logging.getLogger(__name__)
 
 
 class FinancialAnalyzer:
-    def __init__(self, provider: str | None = None) -> None:
+    def __init__(self, provider: str | None = None, briefing_length: str = "medium") -> None:
         self.provider = provider or DEFAULT_LLM_PROVIDER
+        self.briefing_length = briefing_length
         self._validate_provider()
 
     def _validate_provider(self) -> None:
@@ -117,17 +121,27 @@ Use bullet points for clarity. Cover:
 Format in clean Markdown. Be brief and data-driven."""
 
         elif briefing_length == "detailed":
-            return """Produce a comprehensive Daily Financial Briefing in ~800 words.
-The briefing should have the following sections:
-1. 🚨 **Market Sentinel**: In-depth analysis of the single most important trend or risk factor.
-2. 📈 **Key Drivers**: Detailed explanation of 3-5 main stories driving the market, with data points.
-3. 🏭 **Sector Spotlight**: Highlight 2-3 sectors most affected and why.
-4. 🌍 **Macro & Geopolitical Context**: Broader economic or geopolitical factors at play.
-5. 💡 **Actionable Insights**: 2-3 concrete suggestions for investors (both conservative and aggressive).
-6. ⚠️ **Risks to Watch**: Key downside risks or upcoming catalysts.
-7. 🔮 **Outlook**: Prediction for the next 24-48 hours with reasoning.
-Format the output in clean Markdown.
-Keep it professional, data-driven, yet engaging. Provide depth and nuance."""
+            return """Produce a comprehensive, institutional-grade Daily Financial Briefing.
+MINIMUM LENGTH REQUIREMENT: The briefing MUST be at least 800 words. Aim for 800-1200 words.
+Each section below MUST contain multiple detailed paragraphs with specific data points, analysis, and context.
+Do NOT produce bullet-point-only output — use full prose paragraphs with supporting evidence.
+
+The briefing MUST include ALL of the following sections (do not skip any):
+1. 🚨 **Market Sentinel** (150+ words): In-depth analysis of the single most important trend or risk factor.
+   Include specific price levels, percentage moves, and historical context.
+2. 📈 **Key Drivers** (200+ words): Detailed explanation of 3-5 main stories driving the market.
+   Each driver should include concrete data points, quotes from sources, and cause-effect analysis.
+3. 🏭 **Sector Spotlight** (100+ words): Highlight 2-3 sectors most affected, with specific stock/ETF moves.
+4. 🌍 **Macro & Geopolitical Context** (100+ words): Broader economic or geopolitical factors at play.
+   Include relevant economic indicators, policy decisions, and global developments.
+5. 💡 **Actionable Insights** (100+ words): 2-3 concrete suggestions for investors (both conservative and aggressive).
+   Include specific entry/exit levels, position sizing guidance, and risk management.
+6. ⚠️ **Risks to Watch** (80+ words): Key downside risks or upcoming catalysts with probability assessments.
+7. 🔮 **Outlook** (80+ words): Prediction for the next 24-48 hours with detailed reasoning and scenarios.
+
+Format the output in clean Markdown with proper headings.
+Keep it professional, data-driven, yet engaging. Provide depth and nuance.
+IMPORTANT: Do NOT truncate or abbreviate. Each section must be substantive and complete."""
 
         else:  # medium
             return """Produce a concise, high-impact Daily Financial Briefing in ~400 words.
@@ -252,6 +266,41 @@ Keep it professional, data-driven, yet engaging."""
         else:
             return self._call_openai_compat(input_text, provider)
 
+    def _gemini_generation_config(self) -> dict:
+        """构建 Gemini generationConfig，根据报告长度动态调整 token 上限和思考预算。"""
+        max_tokens = GEMINI_MAX_OUTPUT_TOKENS.get(self.briefing_length, 8192)
+        thinking_budget = int(os.getenv("GEMINI_THINKING_BUDGET", str(GEMINI_THINKING_BUDGET)))
+        config: dict = {
+            "temperature": 0.7,
+            "maxOutputTokens": max_tokens,
+        }
+        # thinkingBudget: -1 表示动态（默认），0 表示关闭
+        if thinking_budget == -1:
+            # 不传 thinkingConfig，使用 Gemini 默认的动态思考
+            pass
+        else:
+            config["thinkingConfig"] = {"thinkingBudget": thinking_budget}
+        return config
+
+    @staticmethod
+    def _extract_gemini_text(data: dict, provider_name: str = "Gemini") -> str:
+        """从 Gemini 响应中提取非 thought 的 text 部分。"""
+        try:
+            parts = data["candidates"][0]["content"]["parts"]
+            text_parts = []
+            for part in parts:
+                # 过滤掉 thought summary 部分（thought == true）
+                if part.get("thought", False):
+                    continue
+                text = part.get("text", "")
+                if text:
+                    text_parts.append(text)
+            if text_parts:
+                return "".join(text_parts)
+            return f"No response from {provider_name}."
+        except (KeyError, IndexError):
+            return f"No response from {provider_name}."
+
     def _call_gemini(self, input_text: str, provider_key: str = "gemini") -> str:
         """调用 Google Gemini API，支持代理。"""
         import requests as http_requests
@@ -262,27 +311,18 @@ Keep it professional, data-driven, yet engaging."""
         url = f"{cfg['base_url']}/models/{model}:generateContent?key={api_key}"
         payload = {
             "contents": [{"parts": [{"text": input_text}]}],
-            "generationConfig": {
-                "temperature": 0.7,
-                "maxOutputTokens": 8192,
-                "thinkingConfig": {
-                    "thinkingBudget": 0,
-                },
-            },
+            "generationConfig": self._gemini_generation_config(),
         }
         proxies = get_proxy()
-        resp = retry_api_call(lambda: http_requests.post(url, json=payload, timeout=180, proxies=proxies))
+        resp = retry_api_call(lambda: http_requests.post(url, json=payload, timeout=300, proxies=proxies))
         if resp.status_code != 200:
             logger.error("Gemini API error %d: %s", resp.status_code, resp.text[:500])
         resp.raise_for_status()
         data = resp.json()
-        try:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError):
-            return f"No response from {cfg['name']}."
+        return self._extract_gemini_text(data, cfg["name"])
 
     def _call_gemini_stream(self, input_text: str, provider_key: str = "gemini") -> Generator[str, None, None]:
-        """调用 Google Gemini API 流式输出，逞块 yield 文本。"""
+        """调用 Google Gemini API 流式输出，逐块 yield 文本。自动过滤 thought 部分。"""
         import requests as http_requests
 
         cfg = LLM_PROVIDERS[provider_key]
@@ -291,18 +331,12 @@ Keep it professional, data-driven, yet engaging."""
         url = f"{cfg['base_url']}/models/{model}:streamGenerateContent?alt=sse&key={api_key}"
         payload = {
             "contents": [{"parts": [{"text": input_text}]}],
-            "generationConfig": {
-                "temperature": 0.7,
-                "maxOutputTokens": 8192,
-                "thinkingConfig": {
-                    "thinkingBudget": 0,
-                },
-            },
+            "generationConfig": self._gemini_generation_config(),
         }
         proxies = get_proxy()
         import json as json_mod
 
-        resp = http_requests.post(url, json=payload, timeout=180, proxies=proxies, stream=True)
+        resp = http_requests.post(url, json=payload, timeout=300, proxies=proxies, stream=True)
         if resp.status_code != 200:
             logger.error("Gemini Stream API error %d: %s", resp.status_code, resp.text[:500])
             resp.raise_for_status()
@@ -324,6 +358,9 @@ Keep it professional, data-driven, yet engaging."""
                     if candidates:
                         parts = candidates[0].get("content", {}).get("parts", [])
                         for part in parts:
+                            # 跳过 thought summary 部分
+                            if part.get("thought", False):
+                                continue
                             text = part.get("text", "")
                             if text:
                                 yield text
@@ -341,6 +378,7 @@ Keep it professional, data-driven, yet engaging."""
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
+        max_tokens = OPENAI_COMPAT_MAX_TOKENS.get(self.briefing_length, 4096)
         payload = {
             "model": cfg["model"],
             "messages": [
@@ -351,9 +389,9 @@ Keep it professional, data-driven, yet engaging."""
                 {"role": "user", "content": input_text},
             ],
             "temperature": 0.7,
-            "max_tokens": 4096,
+            "max_tokens": max_tokens,
         }
-        resp = retry_api_call(lambda: http_requests.post(url, json=payload, headers=headers, timeout=120))
+        resp = retry_api_call(lambda: http_requests.post(url, json=payload, headers=headers, timeout=180))
         resp.raise_for_status()
         data = resp.json()
         try:
@@ -374,6 +412,7 @@ Keep it professional, data-driven, yet engaging."""
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
         }
+        max_tokens = OPENAI_COMPAT_MAX_TOKENS.get(self.briefing_length, 4096)
         payload = {
             "model": cfg["model"],
             "messages": [
@@ -384,10 +423,10 @@ Keep it professional, data-driven, yet engaging."""
                 {"role": "user", "content": input_text},
             ],
             "temperature": 0.7,
-            "max_tokens": 4096,
+            "max_tokens": max_tokens,
             "stream": True,
         }
-        resp = http_requests.post(url, json=payload, headers=headers, timeout=120, stream=True)
+        resp = http_requests.post(url, json=payload, headers=headers, timeout=180, stream=True)
         resp.raise_for_status()
 
         # Force UTF-8 decoding for Chinese content support.
@@ -423,6 +462,7 @@ Keep it professional, data-driven, yet engaging."""
         previous_report_meta: dict | None = None,
     ) -> str:
         """分析新闻并生成简报。"""
+        self.briefing_length = briefing_length
         if not news_items:
             return "No news to analyze."
 
@@ -479,6 +519,7 @@ Keep it professional, data-driven, yet engaging."""
         previous_report_meta: dict | None = None,
     ) -> Generator[str, None, None]:
         """分析新闻并生成简报（真正流式 yield 方式）。"""
+        self.briefing_length = briefing_length
         if not news_items:
             yield "No news to analyze."
             return
