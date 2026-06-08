@@ -21,6 +21,7 @@ from src.config import (
     SNAPSHOT_TICKERS,
     TIME_RANGE_PERIOD_MAP,
 )
+from src.insights import render_news_intelligence_markdown
 from src.utils import get_api_key, get_proxy, retry_api_call
 
 logger = logging.getLogger(__name__)
@@ -53,9 +54,13 @@ class FinancialAnalyzer:
 
     # ──────────────────── 辅助方法 ────────────────────
 
-    def _build_news_context(self, news_items: list[dict]) -> str:
-        """构建新闻上下文，优先使用全文内容。"""
+    def _build_news_context(self, news_items: list[dict], language: str = "en") -> str:
+        """构建新闻上下文，优先使用全文内容，并注入确定性新闻信号。"""
         parts = []
+        intelligence = render_news_intelligence_markdown(news_items, language=language)
+        if intelligence:
+            parts.append(f"{intelligence}\n")
+
         for i, item in enumerate(news_items, 1):
             part = f"\n--- Article {i} ---\n"
             part += f"Title: {item.get('title')} ({item.get('source')})\n"
@@ -517,7 +522,7 @@ Keep it professional, data-driven, yet engaging."""
             logger.info("Previous report is too old or metadata invalid, skipping comparison.")
             previous_report = None
 
-        news_context = self._build_news_context(news_items)
+        news_context = self._build_news_context(news_items, language=language)
         snapshot = self.fetch_market_snapshot(time_range=time_range)
         input_text = self._build_input(
             news_context=news_context,
@@ -575,7 +580,7 @@ Keep it professional, data-driven, yet engaging."""
             logger.info("Previous report is too old or metadata invalid, skipping comparison.")
             previous_report = None
 
-        news_context = self._build_news_context(news_items)
+        news_context = self._build_news_context(news_items, language=language)
 
         if on_status:
             provider_key = DEEP_LLM_PROVIDER if deep_analysis else self.provider

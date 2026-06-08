@@ -24,6 +24,7 @@ from src.config import (
 )
 from src.history import HistoryManager
 from src.i18n import t
+from src.insights import render_news_intelligence_markdown
 from src.media_gen import EDGE_VOICE_PRESETS, TTS_ENGINES, VOICE_PRESETS, MediaGenerator
 from src.styles import inject_styles, render_sidebar_footer
 from src.utils import get_api_key
@@ -386,6 +387,14 @@ def _sentiment_tag(title: str) -> str:
     return t("sentiment_neutral_tag")
 
 
+def _render_news_intelligence_panel(news_items: list) -> None:
+    """Render deterministic news signal map for collected articles."""
+    intelligence = render_news_intelligence_markdown(news_items, language=language)
+    if intelligence:
+        st.markdown(intelligence)
+        st.divider()
+
+
 def _render_news_list(news_items: list, show_full_content: bool = False) -> None:
     """Render news items with sentiment tags and optional source grouping."""
     _group_options = {t("group_none"): "none", t("group_source"): "source"}
@@ -421,6 +430,7 @@ def _render_news_list(news_items: list, show_full_content: bool = False) -> None
 
 def display_result(news_items, report, audio_path=None, pdf_path=None, use_newspaper=False, newspaper_theme="classic"):
     with st.expander(t("collected_news", count=len(news_items)), expanded=False):
+        _render_news_intelligence_panel(news_items)
         _render_news_list(news_items)
 
     st.subheader(t("analysis_report"))
@@ -506,6 +516,7 @@ with tab_analysis:
                     st.caption(t("scraped_count", scraped=scraped, total=len(news_items)))
 
                 with st.expander(t("collected_news", count=len(news_items)), expanded=False):
+                    _render_news_intelligence_panel(news_items)
                     _render_news_list(news_items, show_full_content=True)
 
                 previous_report = None
