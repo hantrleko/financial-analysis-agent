@@ -25,6 +25,7 @@ def test_build_news_context():
     ctx = analyzer._build_news_context(items, language="en")
     assert "News Intelligence Signal Map" in ctx
     assert "Dominant theme" in ctx
+    assert "Asset Impact Radar" in ctx
     assert "Scenario Playbook" in ctx
     assert "Stock rises" in ctx
     assert "Oil drops" in ctx
@@ -249,3 +250,4 @@ def test_build_input_no_role_instruction():
     assert "You are an expert" not in result
     assert "Collected News Articles" in result
     assert "News Intelligence Signal Map" in result
+    assert "Asset Impact Radar" in result
