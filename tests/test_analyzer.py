@@ -26,6 +26,7 @@ def test_build_news_context():
     assert "News Intelligence Signal Map" in ctx
     assert "Dominant theme" in ctx
     assert "Asset Impact Radar" in ctx
+    assert "Decision Checklist" in ctx
     assert "Scenario Playbook" in ctx
     assert "Stock rises" in ctx
     assert "Oil drops" in ctx
@@ -251,3 +252,4 @@ def test_build_input_no_role_instruction():
     assert "Collected News Articles" in result
     assert "News Intelligence Signal Map" in result
     assert "Asset Impact Radar" in result
+    assert "Decision Checklist" in result
