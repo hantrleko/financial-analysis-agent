@@ -51,9 +51,25 @@ def test_build_news_intelligence_ranks_urgent_items():
     assert intelligence.market_regime_key == "risk_off"
     assert intelligence.source_diversity_key == "broad"
     assert intelligence.dominant_horizon == "intraday"
+    assert intelligence.conviction_score >= 50
+    assert intelligence.conviction_key in {"moderate", "high"}
+    assert intelligence.narrative_tension_key == "directional"
     assert "S&P 500 / SPY" in intelligence.primary_assets
     assert intelligence.signals[0].source == "B"
     assert intelligence.signals[0].urgency > 0
+
+
+def test_build_news_intelligence_detects_conflicting_narratives():
+    items = [
+        {"title": "Fed rate outlook lifts stocks", "description": "S&P shares rally", "source": "A"},
+        {"title": "Fed inflation warning hits stocks", "description": "Nasdaq shares plunge", "source": "B"},
+    ]
+
+    intelligence = build_news_intelligence(items)
+
+    assert intelligence.narrative_tension_key == "conflicted"
+    assert intelligence.tone_alignment_share == 0.5
+    assert intelligence.conviction_score > 0
 
 
 def test_render_news_intelligence_markdown_bilingual():
@@ -70,6 +86,8 @@ def test_render_news_intelligence_markdown_bilingual():
     assert "Market regime" in en
     assert "Asset Impact Radar" in en
     assert "Validation horizon" in en
+    assert "Narrative conviction" in en
+    assert "Narrative Conviction Monitor" in en
     assert "Decision Checklist" in en
     assert "Scenario Playbook" in en
     assert "新闻智能信号图谱" in zh
@@ -77,5 +95,7 @@ def test_render_news_intelligence_markdown_bilingual():
     assert "市场状态" in zh
     assert "资产影响雷达" in zh
     assert "验证窗口" in zh
+    assert "叙事置信度" in zh
+    assert "叙事置信度监控" in zh
     assert "决策检查清单" in zh
     assert "情景推演与验证清单" in zh
