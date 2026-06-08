@@ -35,6 +35,15 @@ def _cached_asset_dashboard(
     )
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_correlation_matrix(
+    tickers_tuple: tuple[str, ...],
+    names_tuple: tuple[str, ...],
+    period: str = "3mo",
+):
+    return create_correlation_matrix(list(tickers_tuple), list(names_tuple), period=period)
+
+
 CHART_PERIOD_OPTIONS_KEYS = [
     "period_1w",
     "period_1m",
@@ -104,6 +113,7 @@ def render_charts_tab() -> None:
 
     if refresh_clicked:
         _cached_asset_dashboard.clear()
+        _cached_correlation_matrix.clear()
         st.session_state["charts_loaded"] = True
         st.session_state["charts_last_updated"] = datetime.now().strftime("%H:%M:%S")
         st.rerun()
@@ -118,6 +128,7 @@ def render_charts_tab() -> None:
         if _now - _last_auto > _interval_mins * 60:
             st.session_state["charts_last_auto_ts"] = _now
             _cached_asset_dashboard.clear()
+            _cached_correlation_matrix.clear()
             st.session_state["charts_last_updated"] = datetime.now().strftime("%H:%M:%S")
 
     if not st.session_state.get("charts_loaded", False):
@@ -149,9 +160,9 @@ def render_charts_tab() -> None:
                         all_names.append(a["name"])
             if len(all_tickers) >= 2:
                 with st.spinner(t("loading_market")):
-                    corr_fig = create_correlation_matrix(
-                        all_tickers,
-                        all_names,
+                    corr_fig = _cached_correlation_matrix(
+                        tuple(all_tickers),
+                        tuple(all_names),
                         period="3mo",
                     )
                 st.plotly_chart(corr_fig, use_container_width=True)
