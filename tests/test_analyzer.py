@@ -161,6 +161,70 @@ def test_extract_gemini_text_stop_no_warning(caplog):
     assert "truncated" not in caplog.text.lower()
 
 
+def test_call_gemini_sends_api_key_header(monkeypatch):
+    """Gemini non-stream calls should not leak API keys in URLs."""
+    analyzer = FinancialAnalyzer(provider="gemini")
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        text = "ok"
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"candidates": [{"content": {"parts": [{"text": "Gemini response"}]}}]}
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["headers"] = kwargs.get("headers")
+        return FakeResponse()
+
+    monkeypatch.setattr("src.analyzer.get_api_key", lambda env_key: "secret-key")
+    monkeypatch.setattr("src.analyzer.get_proxy", lambda: None)
+    monkeypatch.setattr("requests.post", fake_post)
+
+    assert analyzer._call_gemini("hello") == "Gemini response"
+    assert "secret-key" not in captured["url"]
+    assert "?key=" not in captured["url"]
+    assert captured["headers"] == {"x-goog-api-key": "secret-key"}
+
+
+def test_call_gemini_stream_sends_api_key_header(monkeypatch):
+    """Gemini streaming calls should send API keys via headers."""
+    analyzer = FinancialAnalyzer(provider="gemini")
+    captured = {}
+
+    class FakeStreamResponse:
+        status_code = 200
+        text = "ok"
+        encoding = None
+
+        def raise_for_status(self):
+            return None
+
+        def iter_lines(self, decode_unicode=True):
+            assert decode_unicode is True
+            yield 'data: {"candidates":[{"content":{"parts":[{"text":"chunk"}]}}]}'
+
+    def fake_post(url, **kwargs):
+        captured["url"] = url
+        captured["headers"] = kwargs.get("headers")
+        captured["stream"] = kwargs.get("stream")
+        return FakeStreamResponse()
+
+    monkeypatch.setattr("src.analyzer.get_api_key", lambda env_key: "secret-key")
+    monkeypatch.setattr("src.analyzer.get_proxy", lambda: None)
+    monkeypatch.setattr("requests.post", fake_post)
+
+    assert list(analyzer._call_gemini_stream("hello")) == ["chunk"]
+    assert "secret-key" not in captured["url"]
+    assert "key=" not in captured["url"]
+    assert captured["headers"] == {"x-goog-api-key": "secret-key"}
+    assert captured["stream"] is True
+
+
 def test_system_instruction_constant():
     """GEMINI_SYSTEM_INSTRUCTION should exist and contain key guidance."""
     from src.analyzer import GEMINI_SYSTEM_INSTRUCTION

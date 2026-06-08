@@ -67,3 +67,17 @@ def test_generate_audio_falls_back_to_edge_when_elevenlabs_key_missing(monkeypat
     assert mg.generate_audio("hello", output_file=str(output_file), language="en", tts_engine="elevenlabs") == str(
         output_file
     )
+
+
+def test_merge_binary_files_removes_parts(tmp_path):
+    part1 = tmp_path / "part1.mp3"
+    part2 = tmp_path / "part2.mp3"
+    output = tmp_path / "merged.mp3"
+    part1.write_bytes(b"abc")
+    part2.write_bytes(b"def")
+
+    MediaGenerator._merge_binary_files([str(part1), str(part2)], str(output))
+
+    assert output.read_bytes() == b"abcdef"
+    assert not part1.exists()
+    assert not part2.exists()

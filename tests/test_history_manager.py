@@ -70,3 +70,15 @@ def test_load_run_returns_partial_data_when_json_is_corrupted(tmp_path):
     assert loaded["report"] == "# Still readable"
     assert "metadata" not in loaded
     assert "news" not in loaded
+
+
+def test_history_rejects_path_traversal_run_ids(tmp_path):
+    hm = HistoryManager(history_dir=str(tmp_path / "history"))
+    outside_dir = tmp_path / "outside_run"
+    outside_dir.mkdir()
+    (outside_dir / "report.md").write_text("# Outside", encoding="utf-8")
+
+    assert hm.load_run("../outside_run") is None
+    assert hm.delete_run("../outside_run") is False
+    assert outside_dir.exists()
+    assert hm._get_run_dir("nested/run") is None

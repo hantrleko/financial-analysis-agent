@@ -16,6 +16,20 @@ class HistoryManager:
         self.history_dir = history_dir
         os.makedirs(history_dir, exist_ok=True)
 
+    def _get_run_dir(self, run_id: str) -> str | None:
+        """Return a safe run directory path, rejecting traversal or nested paths."""
+        normalized = os.path.normpath(str(run_id or ""))
+        if not normalized or normalized in {".", ".."} or os.path.basename(normalized) != normalized:
+            logger.warning("Rejected unsafe history run_id: %s", run_id)
+            return None
+
+        base_dir = os.path.abspath(self.history_dir)
+        run_dir = os.path.abspath(os.path.join(base_dir, normalized))
+        if os.path.commonpath([base_dir, run_dir]) != base_dir:
+            logger.warning("Rejected history path outside base directory: %s", run_id)
+            return None
+        return run_dir
+
     def _generate_run_id(self) -> str:
         """生成唯一 run_id，优先使用微秒时间戳，并处理极端并发冲突。"""
         base = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -105,8 +119,8 @@ class HistoryManager:
         """
         加载指定运行的完整数据。
         """
-        run_dir = os.path.join(self.history_dir, run_id)
-        if not os.path.exists(run_dir):
+        run_dir = self._get_run_dir(run_id)
+        if not run_dir or not os.path.exists(run_dir):
             return None
 
         result = {"run_id": run_id}
@@ -152,8 +166,8 @@ class HistoryManager:
 
     def delete_run(self, run_id: str) -> bool:
         """删除指定运行记录。"""
-        run_dir = os.path.join(self.history_dir, run_id)
-        if os.path.exists(run_dir):
+        run_dir = self._get_run_dir(run_id)
+        if run_dir and os.path.exists(run_dir):
             shutil.rmtree(run_dir)
             logger.info("Deleted run: %s", run_id)
             return True
@@ -197,8 +211,9 @@ class HistoryManager:
                     results.append(meta)
                     continue
                 # Keyword not in query — check report content
-                report_path = os.path.join(self.history_dir, meta["run_id"], "report.md")
-                if os.path.exists(report_path):
+                run_dir = self._get_run_dir(meta.get("run_id", ""))
+                report_path = os.path.join(run_dir, "report.md") if run_dir else ""
+                if report_path and os.path.exists(report_path):
                     try:
                         with open(report_path, "r", encoding="utf-8") as f:
                             report_text = f.read()

@@ -326,7 +326,8 @@ Keep it professional, data-driven, yet engaging."""
         cfg = LLM_PROVIDERS[provider_key]
         api_key = get_api_key(cfg["env_key"])
         model = os.getenv("GEMINI_MODEL", cfg["model"])
-        url = f"{cfg['base_url']}/models/{model}:generateContent?key={api_key}"
+        url = f"{cfg['base_url']}/models/{model}:generateContent"
+        headers = {"x-goog-api-key": api_key}
         payload = {
             "systemInstruction": {
                 "parts": [
@@ -339,7 +340,9 @@ Keep it professional, data-driven, yet engaging."""
             "generationConfig": self._gemini_generation_config(),
         }
         proxies = get_proxy()
-        resp = retry_api_call(lambda: http_requests.post(url, json=payload, timeout=300, proxies=proxies))
+        resp = retry_api_call(
+            lambda: http_requests.post(url, headers=headers, json=payload, timeout=300, proxies=proxies)
+        )
         if resp.status_code != 200:
             logger.error("Gemini API error %d: %s", resp.status_code, resp.text[:500])
         resp.raise_for_status()
@@ -353,7 +356,8 @@ Keep it professional, data-driven, yet engaging."""
         cfg = LLM_PROVIDERS[provider_key]
         api_key = get_api_key(cfg["env_key"])
         model = os.getenv("GEMINI_MODEL", cfg["model"])
-        url = f"{cfg['base_url']}/models/{model}:streamGenerateContent?alt=sse&key={api_key}"
+        url = f"{cfg['base_url']}/models/{model}:streamGenerateContent?alt=sse"
+        headers = {"x-goog-api-key": api_key}
         payload = {
             "systemInstruction": {
                 "parts": [
@@ -368,7 +372,7 @@ Keep it professional, data-driven, yet engaging."""
         proxies = get_proxy()
         import json as json_mod
 
-        resp = http_requests.post(url, json=payload, timeout=300, proxies=proxies, stream=True)
+        resp = http_requests.post(url, headers=headers, json=payload, timeout=300, proxies=proxies, stream=True)
         if resp.status_code != 200:
             logger.error("Gemini Stream API error %d: %s", resp.status_code, resp.text[:500])
             resp.raise_for_status()

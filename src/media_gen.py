@@ -111,6 +111,22 @@ class MediaGenerator:
             self._client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
         return self._client
 
+    @staticmethod
+    def _merge_binary_files(part_files: list[str], output_file: str) -> None:
+        """Merge temporary binary chunks and always clean up part files."""
+        try:
+            with open(output_file, "wb") as out:
+                for part_file in part_files:
+                    with open(part_file, "rb") as pf:
+                        out.write(pf.read())
+        finally:
+            for part_file in part_files:
+                try:
+                    if os.path.exists(part_file):
+                        os.remove(part_file)
+                except OSError as e:
+                    logger.warning("Failed to remove temporary audio part %s: %s", part_file, e)
+
     # ------------------------------------------------------------------
     # TTS
     # ------------------------------------------------------------------
@@ -195,13 +211,8 @@ class MediaGenerator:
                         for chunk in audio:
                             if chunk:
                                 f.write(chunk)
-                # 合并临时文件（MP3 可直接二进制拼接）
-                with open(output_file, "wb") as out:
-                    for part_file in part_files:
-                        with open(part_file, "rb") as pf:
-                            out.write(pf.read())
-                for part_file in part_files:
-                    os.remove(part_file)
+                # 合并临时文件（MP3 可直接二进制拼接）并清理分片
+                self._merge_binary_files(part_files, output_file)
 
             logger.info("Audio saved to %s", output_file)
             return output_file
@@ -269,13 +280,8 @@ class MediaGenerator:
                     part_files.append(part_file)
                     communicate = edge_tts.Communicate(text_chunk, voice)
                     _run_async(communicate.save(part_file))
-                # 合并临时文件（MP3 可直接二进制拼接）
-                with open(output_file, "wb") as out:
-                    for part_file in part_files:
-                        with open(part_file, "rb") as pf:
-                            out.write(pf.read())
-                for part_file in part_files:
-                    os.remove(part_file)
+                # 合并临时文件（MP3 可直接二进制拼接）并清理分片
+                self._merge_binary_files(part_files, output_file)
 
             logger.info("Audio saved to %s", output_file)
             return output_file
