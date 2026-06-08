@@ -199,7 +199,8 @@ class NewsCollector:
         cfg = LLM_PROVIDERS.get("gemini", {})
         base_url = cfg.get("base_url", "https://generativelanguage.googleapis.com/v1beta")
         model = cfg.get("model", "gemini-2.5-flash")
-        url = f"{base_url}/models/{model}:generateContent?key={api_key}"
+        url = f"{base_url}/models/{model}:generateContent"
+        headers = {"x-goog-api-key": api_key}
 
         time_desc = {"24h": "in the last 24 hours", "week": "this week", "month": "this month"}
         prompt = (
@@ -225,7 +226,9 @@ class NewsCollector:
         try:
             logger.info("Fetching news via Gemini Search Grounding...")
             proxies = get_proxy()
-            resp = retry_api_call(lambda: http_requests.post(url, json=payload, timeout=60, proxies=proxies))
+            resp = retry_api_call(
+                lambda: http_requests.post(url, headers=headers, json=payload, timeout=60, proxies=proxies)
+            )
             if resp.status_code != 200:
                 logger.error("Gemini Search API error %d: %s", resp.status_code, resp.text[:500])
             resp.raise_for_status()

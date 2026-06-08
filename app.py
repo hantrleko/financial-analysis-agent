@@ -26,6 +26,7 @@ from src.history import HistoryManager
 from src.i18n import t
 from src.media_gen import EDGE_VOICE_PRESETS, TTS_ENGINES, VOICE_PRESETS, MediaGenerator
 from src.styles import inject_styles, render_sidebar_footer
+from src.utils import get_api_key
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -141,6 +142,13 @@ with st.sidebar.expander(t("basic_settings"), expanded=True):
         help=t("llm_provider_help"),
     )
     llm_provider = _llm_options[_llm_selected_name]
+    _llm_env_key = LLM_PROVIDERS[llm_provider]["env_key"]
+    if not get_api_key(_llm_env_key):
+        st.warning(
+            "当前选择的 LLM Provider 缺少 API Key，分析时可能失败。"
+            if language == "zh"
+            else "The selected LLM provider is missing its API key, so analysis may fail."
+        )
 
     _gemini_model_choices = [
         "gemini-2.5-flash",
@@ -229,6 +237,12 @@ with st.sidebar.expander(t("advanced_settings"), expanded=False):
         help=t("tts_engine_help"),
     )
     tts_engine = TTS_ENGINES[tts_engine_label]
+    if generate_audio and tts_engine == "elevenlabs" and not get_api_key("ELEVENLABS_API_KEY"):
+        st.warning(
+            "未检测到 ELEVENLABS_API_KEY，将无法生成 ElevenLabs 语音；可改用 Edge TTS。"
+            if language == "zh"
+            else "ELEVENLABS_API_KEY is missing; ElevenLabs audio will fail. Consider using Edge TTS."
+        )
 
     if tts_engine == "edge_tts":
         voice_options = list(EDGE_VOICE_PRESETS.get(language, EDGE_VOICE_PRESETS["en"]).keys())

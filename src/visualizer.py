@@ -36,6 +36,29 @@ ASSET_GROUPS = {
 }
 
 
+def _extract_close_prices(data: pd.DataFrame, tickers: list[str]) -> pd.DataFrame:
+    """Normalize yfinance download output into a ticker-column close-price DataFrame."""
+    if data.empty:
+        return pd.DataFrame()
+
+    if isinstance(data.columns, pd.MultiIndex):
+        if "Close" in data.columns.get_level_values(0):
+            close = data["Close"]
+        elif "Close" in data.columns.get_level_values(1):
+            close = data.xs("Close", axis=1, level=1)
+        else:
+            logger.warning("Downloaded data does not contain Close prices")
+            return pd.DataFrame()
+        return close.reindex(columns=[ticker for ticker in tickers if ticker in close.columns]).dropna(how="all")
+
+    if "Close" not in data.columns:
+        logger.warning("Downloaded data does not contain a Close column")
+        return pd.DataFrame()
+
+    ticker = tickers[0] if tickers else "Close"
+    return pd.DataFrame({ticker: data["Close"]}).dropna(how="all")
+
+
 def fetch_price_data(
     tickers: list[str],
     period: str = "1mo",
@@ -43,32 +66,53 @@ def fetch_price_data(
     end: str | None = None,
 ) -> pd.DataFrame:
     """
-    逐个使用 yf.Ticker().history() 下载收盘价。
+    批量下载收盘价，并归一化为 ticker 列。
     支持 period 或 start/end 自定义日期范围。
     """
-    logger.info("Fetching price data for %d tickers, period=%s start=%s end=%s", len(tickers), period, start, end)
-    frames: dict[str, pd.Series] = {}
-    for ticker in tickers:
-        try:
-            t = yf.Ticker(ticker)
-            if start and end:
-                hist = t.history(start=start, end=end)
-            else:
-                hist = t.history(period=period)
-            if hist.empty:
-                logger.warning("  ⚠ No data for %s", ticker)
-                continue
-            frames[ticker] = hist["Close"]
-            logger.info("  ✓ %s: %d rows", ticker, len(hist))
-        except Exception as e:
-            logger.warning("  ✗ %s: %s", ticker, e)
-
-    if not frames:
-        logger.warning("No price data fetched.")
+    if not tickers:
         return pd.DataFrame()
 
-    df = pd.DataFrame(frames)
-    logger.info("Combined DataFrame shape: %s", df.shape)
+    # Deduplicate while preserving user-selected order.
+    tickers = list(dict.fromkeys(tickers))
+    logger.info("Fetching price data for %d tickers, period=%s start=%s end=%s", len(tickers), period, start, end)
+
+    try:
+        download_kwargs = {
+            "progress": False,
+            "threads": True,
+            "auto_adjust": False,
+        }
+        if start and end:
+            data = yf.download(tickers, start=start, end=end, **download_kwargs)
+        else:
+            data = yf.download(tickers, period=period, **download_kwargs)
+        df = _extract_close_prices(data, tickers)
+    except Exception as e:
+        logger.warning("Batch price download failed, falling back to per-ticker fetch: %s", e)
+        df = pd.DataFrame()
+
+    if df.empty:
+        frames: dict[str, pd.Series] = {}
+        for ticker in tickers:
+            try:
+                t = yf.Ticker(ticker)
+                if start and end:
+                    hist = t.history(start=start, end=end)
+                else:
+                    hist = t.history(period=period)
+                if hist.empty:
+                    logger.warning("  No data for %s", ticker)
+                    continue
+                frames[ticker] = hist["Close"]
+                logger.info("  %s: %d rows", ticker, len(hist))
+            except Exception as e:
+                logger.warning("  %s: %s", ticker, e)
+        df = pd.DataFrame(frames) if frames else pd.DataFrame()
+
+    if df.empty:
+        logger.warning("No price data fetched.")
+    else:
+        logger.info("Combined DataFrame shape: %s", df.shape)
     return df
 
 
