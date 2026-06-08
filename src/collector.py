@@ -169,21 +169,31 @@ class NewsCollector:
 
     @staticmethod
     def _dedup(items: list[dict[str, object]], count: int) -> list[dict[str, object]]:
-        """去重（URL + 标题模糊匹配）。"""
+        """去重（URL + 标题模糊匹配），并容忍字段缺失或非字符串输入。"""
+        from urllib.parse import urldefrag
+
         seen_urls = set()
         seen_titles = []
         unique_items = []
         for item in items:
-            url = item.get("url", "")
-            if url and url in seen_urls:
+            title = str(item.get("title") or "").strip()
+            if not title:
                 continue
-            title = item["title"].strip().lower()
-            is_dup = any(SequenceMatcher(None, title, t).ratio() >= DEDUP_SIMILARITY_THRESHOLD for t in seen_titles)
+
+            raw_url = str(item.get("url") or "").strip()
+            normalized_url = urldefrag(raw_url)[0] if raw_url else ""
+            if normalized_url and normalized_url in seen_urls:
+                continue
+
+            title_lower = title.lower()
+            is_dup = any(
+                SequenceMatcher(None, title_lower, t).ratio() >= DEDUP_SIMILARITY_THRESHOLD for t in seen_titles
+            )
             if is_dup:
                 continue
-            if url:
-                seen_urls.add(url)
-            seen_titles.append(title)
+            if normalized_url:
+                seen_urls.add(normalized_url)
+            seen_titles.append(title_lower)
             unique_items.append(item)
         return unique_items[:count]
 
@@ -371,13 +381,21 @@ class NewsCollector:
 
         def _scrape_one(idx_item):
             idx, item = idx_item
-            content = self.scrape_content(item["url"])
+            try:
+                content = self.scrape_content(str(item.get("url", "")))
+            except Exception as e:
+                logger.warning("  [%d/%d] scrape failed - %s: %s", idx + 1, total, item.get("title", "")[:60], e)
+                content = ""
             return idx, item, content
 
         with ThreadPoolExecutor(max_workers=SCRAPE_WORKERS) as executor:
             futures = {executor.submit(_scrape_one, pair): pair for pair in to_scrape}
             for future in as_completed(futures):
-                idx, item, content = future.result()
+                try:
+                    idx, item, content = future.result()
+                except Exception as e:
+                    logger.warning("Unexpected scrape worker failure: %s", e)
+                    continue
                 item["full_content"] = content
                 if content:
                     logger.info("  [%d/%d] %d chars - %s", idx + 1, total, len(content), item.get("title", "")[:60])
