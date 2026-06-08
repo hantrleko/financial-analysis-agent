@@ -118,6 +118,35 @@ URGENCY_KEYWORDS = [
     "制裁",
 ]
 
+CATEGORY_ASSET_WATCHLIST = {
+    "macro": ["US Treasuries / TLT", "US Dollar / DXY", "S&P 500 / SPY", "Gold / GLD"],
+    "stocks": ["S&P 500 / SPY", "Nasdaq 100 / QQQ", "Dow Jones / DIA"],
+    "commodities": ["Crude Oil / CL", "Gold / GLD", "Copper / HG"],
+    "crypto": ["Bitcoin / BTC-USD", "Ethereum / ETH-USD", "Coinbase / COIN"],
+    "forex": ["US Dollar / DXY", "EUR/USD", "USD/JPY", "USD/CNH"],
+    "bonds": ["US Treasuries / TLT", "10Y Yield / ^TNX", "High Yield Credit / HYG"],
+    "other": ["S&P 500 / SPY"],
+}
+
+ASSET_KEYWORDS = {
+    "US Treasuries / TLT": ["treasury", "yield", "bond", "debt", "国债", "收益率", "债券"],
+    "10Y Yield / ^TNX": ["10-year", "10 year", "10y", "yield", "收益率"],
+    "High Yield Credit / HYG": ["credit", "default", "debt", "信用", "违约"],
+    "US Dollar / DXY": ["dollar", "dxy", "美元"],
+    "EUR/USD": ["euro", "eur", "欧元"],
+    "USD/JPY": ["yen", "jpy", "日元"],
+    "USD/CNH": ["yuan", "renminbi", "cnh", "人民币", "离岸人民币"],
+    "S&P 500 / SPY": ["s&p", "sp500", "s&p 500", "stock", "equity", "stocks", "股票", "美股"],
+    "Nasdaq 100 / QQQ": ["nasdaq", "tech", "ai", "semiconductor", "科技", "芯片", "人工智能"],
+    "Dow Jones / DIA": ["dow", "industrial", "道指"],
+    "Crude Oil / CL": ["oil", "crude", "opec", "原油", "石油"],
+    "Gold / GLD": ["gold", "bullion", "黄金"],
+    "Copper / HG": ["copper", "铜"],
+    "Bitcoin / BTC-USD": ["bitcoin", "btc", "比特币"],
+    "Ethereum / ETH-USD": ["ethereum", "eth", "以太坊"],
+    "Coinbase / COIN": ["coinbase", "coin", "crypto exchange", "加密交易所"],
+}
+
 CATEGORY_LABELS = {
     "en": {
         "macro": "Macro",
@@ -187,6 +216,7 @@ class NewsSignal:
     tone: str = "neutral"
     urgency: int = 0
     reason: str = ""
+    asset_impacts: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -197,6 +227,7 @@ class NewsIntelligence:
     category_counts: Counter = field(default_factory=Counter)
     tone_counts: Counter = field(default_factory=Counter)
     top_sources: Counter = field(default_factory=Counter)
+    asset_counts: Counter = field(default_factory=Counter)
 
     @property
     def dominant_category(self) -> str:
@@ -252,6 +283,10 @@ class NewsIntelligence:
             return "event_driven"
         return "neutral"
 
+    @property
+    def primary_assets(self) -> list[str]:
+        return [asset for asset, _count in self.asset_counts.most_common(5)]
+
 
 def classify_category(text: str) -> str:
     """Classify a news item into a broad market category."""
@@ -282,6 +317,22 @@ def urgency_score(text: str) -> int:
     return sum(1 for keyword in URGENCY_KEYWORDS if keyword.lower() in text_lower)
 
 
+def infer_asset_impacts(text: str, category: str, max_assets: int = 5) -> list[str]:
+    """Infer a compact asset watchlist affected by a news item."""
+    text_lower = text.lower()
+    impacts: list[str] = []
+
+    for asset, keywords in ASSET_KEYWORDS.items():
+        if any(keyword.lower() in text_lower for keyword in keywords):
+            impacts.append(asset)
+
+    for asset in CATEGORY_ASSET_WATCHLIST.get(category, CATEGORY_ASSET_WATCHLIST["other"]):
+        if asset not in impacts:
+            impacts.append(asset)
+
+    return impacts[:max_assets]
+
+
 def build_news_intelligence(news_items: list[dict], max_signals: int = 8) -> NewsIntelligence:
     """Build deterministic intelligence signals from collected news items."""
     signals: list[NewsSignal] = []
@@ -295,6 +346,7 @@ def build_news_intelligence(news_items: list[dict], max_signals: int = 8) -> New
         category = classify_category(text)
         tone = classify_tone(text)
         urgency = urgency_score(text)
+        asset_impacts = infer_asset_impacts(text, category)
         reason_bits = []
         if category != "other":
             reason_bits.append(category)
@@ -310,18 +362,21 @@ def build_news_intelligence(news_items: list[dict], max_signals: int = 8) -> New
                 tone=tone,
                 urgency=urgency,
                 reason=", ".join(reason_bits) or "baseline coverage",
+                asset_impacts=asset_impacts,
             )
         )
 
     category_counts = Counter(signal.category for signal in signals)
     tone_counts = Counter(signal.tone for signal in signals)
     top_sources = Counter(signal.source for signal in signals)
+    asset_counts = Counter(asset for signal in signals for asset in signal.asset_impacts)
     ranked = sorted(signals, key=lambda s: (s.urgency, s.tone != "neutral", s.category != "other"), reverse=True)
     return NewsIntelligence(
         signals=ranked[:max_signals],
         category_counts=category_counts,
         tone_counts=tone_counts,
         top_sources=top_sources,
+        asset_counts=asset_counts,
     )
 
 
@@ -331,16 +386,20 @@ def _scenario_playbook_lines(intelligence: NewsIntelligence, language: str) -> l
     dominant = labels.get(intelligence.dominant_category, intelligence.dominant_category)
     tone = tone_labels.get(intelligence.dominant_tone, intelligence.dominant_tone)
 
+    primary_asset = intelligence.primary_assets[0] if intelligence.primary_assets else None
+
     if language == "zh":
+        asset_note = f"，优先观察 **{primary_asset}**" if primary_asset else ""
         return [
-            f"- 基准情景：**{dominant}** 仍是主线，当前新闻基调偏 **{tone}**，需用市场价格和成交量验证。",
+            f"- 基准情景：**{dominant}** 仍是主线，当前新闻基调偏 **{tone}**{asset_note}，需用市场价格和成交量验证。",
             "- 乐观情景：正面催化剂从单点扩散到多来源、多资产，且高优先级风险信号降温。",
             "- 悲观情景：高优先级催化剂升级，或负面叙事从主要来源扩散到更广新闻面。",
             f"- 需要验证：关注 **{dominant}** 新闻是否延续、来源覆盖是否扩大，以及紧迫信号是否跨资产传导。",
         ]
 
+    asset_note = f", with **{primary_asset}** as the first asset to validate" if primary_asset else ""
     return [
-        f"- Base case: **{dominant}** remains the main driver with a **{tone}** news tone; confirm with price and volume data.",
+        f"- Base case: **{dominant}** remains the main driver with a **{tone}** news tone{asset_note}; confirm with price and volume data.",
         "- Bull case: Positive catalysts broaden across sources and assets while high-priority risk signals fade.",
         "- Bear case: High-priority catalysts intensify or negative narratives spread beyond the leading sources.",
         f"- Confirmation watch: Track **{dominant}** follow-through, source breadth, and whether urgent items become cross-asset.",
@@ -364,10 +423,14 @@ def render_news_intelligence_markdown(news_items: list[dict], language: str = "e
         regime_line = "- 市场状态"
         diversity_line = "- 来源覆盖"
         source_line = "- 主要来源"
+        asset_line = "- 资产影响雷达"
         urgency_title = "### 高优先级催化剂"
+        asset_title = "### 资产影响雷达"
         signal_title = "### 代表性信号"
         playbook_title = "### 情景推演与验证清单"
         no_urgency = "- 暂无明显高紧迫性催化剂。"
+        no_assets = "- 暂无可映射的重点资产。"
+        asset_signal_suffix = "条信号"
     else:
         title = "## News Intelligence Signal Map"
         category_line = "- Dominant theme"
@@ -375,12 +438,17 @@ def render_news_intelligence_markdown(news_items: list[dict], language: str = "e
         regime_line = "- Market regime"
         diversity_line = "- Coverage diversity"
         source_line = "- Leading sources"
+        asset_line = "- Asset impact radar"
         urgency_title = "### High-Priority Catalysts"
+        asset_title = "### Asset Impact Radar"
         signal_title = "### Representative Signals"
         playbook_title = "### Scenario Playbook"
         no_urgency = "- No high-urgency catalyst detected."
+        no_assets = "- No mapped asset focus detected."
+        asset_signal_suffix = "signal(s)"
 
     top_sources = ", ".join(f"{source} ({count})" for source, count in intelligence.top_sources.most_common(3))
+    top_assets = ", ".join(f"{asset} ({count})" for asset, count in intelligence.asset_counts.most_common(3))
     lines = [
         title,
         f"{category_line}: **{labels.get(intelligence.dominant_category, intelligence.dominant_category)}**",
@@ -389,6 +457,7 @@ def render_news_intelligence_markdown(news_items: list[dict], language: str = "e
         f"{diversity_line}: **{diversity_labels.get(intelligence.source_diversity_key, intelligence.source_diversity_key)}** "
         f"({intelligence.source_diversity_score:.0%})",
         f"{source_line}: {top_sources or 'N/A'}",
+        f"{asset_line}: {top_assets or 'N/A'}",
         "",
         urgency_title,
     ]
@@ -402,6 +471,13 @@ def render_news_intelligence_markdown(news_items: list[dict], language: str = "e
             )
     else:
         lines.append(no_urgency)
+
+    lines.extend(["", asset_title])
+    if intelligence.asset_counts:
+        for asset, count in intelligence.asset_counts.most_common(5):
+            lines.append(f"- {asset}: {count} {asset_signal_suffix}")
+    else:
+        lines.append(no_assets)
 
     lines.extend(["", signal_title])
     for signal in intelligence.signals[:5]:
