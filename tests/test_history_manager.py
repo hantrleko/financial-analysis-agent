@@ -42,3 +42,31 @@ def test_save_and_load_run_roundtrip(tmp_path):
     meta = json.loads((tmp_path / run_id / "metadata.json").read_text(encoding="utf-8"))
     assert meta["query"] == "market"
     assert meta["num_articles"] == 1
+
+
+def test_list_runs_skips_corrupted_metadata(tmp_path):
+    hm = HistoryManager(history_dir=str(tmp_path))
+    valid_run_id = hm.save_run(news_items=[], report="# Valid", query="valid")
+
+    bad_dir = tmp_path / "bad_run"
+    bad_dir.mkdir()
+    (bad_dir / "metadata.json").write_text("{bad json", encoding="utf-8")
+
+    runs = hm.list_runs()
+    assert [r["run_id"] for r in runs] == [valid_run_id]
+
+
+def test_load_run_returns_partial_data_when_json_is_corrupted(tmp_path):
+    hm = HistoryManager(history_dir=str(tmp_path))
+    run_dir = tmp_path / "manual_run"
+    run_dir.mkdir()
+    (run_dir / "metadata.json").write_text("{bad json", encoding="utf-8")
+    (run_dir / "news.json").write_text("{bad json", encoding="utf-8")
+    (run_dir / "report.md").write_text("# Still readable", encoding="utf-8")
+
+    loaded = hm.load_run("manual_run")
+    assert loaded is not None
+    assert loaded["run_id"] == "manual_run"
+    assert loaded["report"] == "# Still readable"
+    assert "metadata" not in loaded
+    assert "news" not in loaded

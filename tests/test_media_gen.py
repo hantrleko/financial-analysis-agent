@@ -46,3 +46,24 @@ def test_split_text_for_tts():
     combined = "".join(chunks)
     assert "First" in combined
     assert "Third" in combined
+
+
+def test_generate_audio_falls_back_to_edge_when_elevenlabs_key_missing(monkeypatch, tmp_path):
+    import src.media_gen as media_gen_module
+
+    mg = MediaGenerator()
+    output_file = tmp_path / "briefing.mp3"
+    monkeypatch.setattr(media_gen_module, "ELEVENLABS_API_KEY", "")
+
+    def fake_edge(text, output_file_arg, language, voice_name):
+        assert text == "hello"
+        assert output_file_arg == str(output_file)
+        assert language == "en"
+        assert voice_name is None
+        return str(output_file)
+
+    monkeypatch.setattr(mg, "generate_audio_edge", fake_edge)
+
+    assert mg.generate_audio("hello", output_file=str(output_file), language="en", tts_engine="elevenlabs") == str(
+        output_file
+    )

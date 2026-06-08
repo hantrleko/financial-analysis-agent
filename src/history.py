@@ -94,8 +94,11 @@ class HistoryManager:
         for entry in sorted(os.listdir(self.history_dir), reverse=True):
             meta_path = os.path.join(self.history_dir, entry, "metadata.json")
             if os.path.exists(meta_path):
-                with open(meta_path, "r", encoding="utf-8") as f:
-                    runs.append(json.load(f))
+                try:
+                    with open(meta_path, "r", encoding="utf-8") as f:
+                        runs.append(json.load(f))
+                except (OSError, json.JSONDecodeError) as e:
+                    logger.warning("Skipping corrupted history metadata %s: %s", meta_path, e)
         return runs
 
     def load_run(self, run_id: str) -> dict | None:
@@ -111,20 +114,29 @@ class HistoryManager:
         # Load metadata
         meta_path = os.path.join(run_dir, "metadata.json")
         if os.path.exists(meta_path):
-            with open(meta_path, "r", encoding="utf-8") as f:
-                result["metadata"] = json.load(f)
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    result["metadata"] = json.load(f)
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning("Failed to load history metadata %s: %s", meta_path, e)
 
         # Load news
         news_path = os.path.join(run_dir, "news.json")
         if os.path.exists(news_path):
-            with open(news_path, "r", encoding="utf-8") as f:
-                result["news"] = json.load(f)
+            try:
+                with open(news_path, "r", encoding="utf-8") as f:
+                    result["news"] = json.load(f)
+            except (OSError, json.JSONDecodeError) as e:
+                logger.warning("Failed to load history news %s: %s", news_path, e)
 
         # Load report
         report_path = os.path.join(run_dir, "report.md")
         if os.path.exists(report_path):
-            with open(report_path, "r", encoding="utf-8") as f:
-                result["report"] = f.read()
+            try:
+                with open(report_path, "r", encoding="utf-8") as f:
+                    result["report"] = f.read()
+            except OSError as e:
+                logger.warning("Failed to load history report %s: %s", report_path, e)
 
         # Audio path
         audio_path = os.path.join(run_dir, "briefing.mp3")
@@ -167,7 +179,11 @@ class HistoryManager:
         results = []
         for meta in self.list_runs():
             # Filter by date range
-            ts = datetime.fromisoformat(meta["timestamp"])
+            try:
+                ts = datetime.fromisoformat(meta["timestamp"])
+            except (KeyError, ValueError) as e:
+                logger.warning("Skipping history run with invalid timestamp: %s", e)
+                continue
             if date_from and ts < date_from:
                 continue
             if date_to and ts > date_to:
@@ -183,8 +199,12 @@ class HistoryManager:
                 # Keyword not in query — check report content
                 report_path = os.path.join(self.history_dir, meta["run_id"], "report.md")
                 if os.path.exists(report_path):
-                    with open(report_path, "r", encoding="utf-8") as f:
-                        report_text = f.read()
+                    try:
+                        with open(report_path, "r", encoding="utf-8") as f:
+                            report_text = f.read()
+                    except OSError as e:
+                        logger.warning("Failed to search history report %s: %s", report_path, e)
+                        continue
                     if kw_lower in report_text.lower():
                         results.append(meta)
                         continue

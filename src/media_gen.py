@@ -133,8 +133,8 @@ class MediaGenerator:
             return self.generate_audio_edge(text, output_file, language, voice_name)
 
         if not ELEVENLABS_API_KEY:
-            logger.warning("Skipping ElevenLabs audio (No API Key). Consider using Edge TTS.")
-            return None
+            logger.warning("ElevenLabs API key missing; falling back to Edge TTS.")
+            return self.generate_audio_edge(text, output_file, language, voice_name=None)
 
         text = self._clean_for_tts(text)
         chunks = self._split_text_for_tts(text, TTS_MAX_CHARS_PER_CHUNK)
