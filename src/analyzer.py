@@ -256,6 +256,10 @@ Keep it professional, data-driven, yet engaging."""
         )
         parts.append("- Distinguish between confirmed facts and market speculation — label speculation clearly")
         parts.append("- Prioritize information by market impact: lead with what matters most to investors")
+        parts.append(
+            "- Use the News Intelligence Signal Map and Scenario Playbook to frame the dominant theme, market regime, "
+            "and what evidence would confirm or invalidate the base case"
+        )
         parts.append(f"{sec}{lang}")
 
         return "\n".join(parts)

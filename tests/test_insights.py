@@ -31,6 +31,8 @@ def test_build_news_intelligence_ranks_urgent_items():
     intelligence = build_news_intelligence(items)
 
     assert intelligence.dominant_category in {"macro", "stocks"}
+    assert intelligence.market_regime_key == "risk_off"
+    assert intelligence.source_diversity_key == "broad"
     assert intelligence.signals[0].source == "B"
     assert intelligence.signals[0].urgency > 0
 
@@ -46,5 +48,9 @@ def test_render_news_intelligence_markdown_bilingual():
 
     assert "News Intelligence Signal Map" in en
     assert "Dominant theme" in en
+    assert "Market regime" in en
+    assert "Scenario Playbook" in en
     assert "新闻智能信号图谱" in zh
     assert "主导主题" in zh
+    assert "市场状态" in zh
+    assert "情景推演与验证清单" in zh
