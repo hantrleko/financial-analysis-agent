@@ -139,6 +139,43 @@ CATEGORY_LABELS = {
     },
 }
 
+TONE_LABELS = {
+    "en": {"positive": "Positive", "negative": "Negative", "neutral": "Neutral"},
+    "zh": {"positive": "正面", "negative": "负面", "neutral": "中性"},
+}
+
+MARKET_REGIME_LABELS = {
+    "en": {
+        "risk_on": "Risk-on watch",
+        "risk_off": "Risk-off watch",
+        "two_way": "Two-way volatility",
+        "event_driven": "Event-driven watch",
+        "neutral": "Neutral / wait-and-see",
+    },
+    "zh": {
+        "risk_on": "风险偏好观察",
+        "risk_off": "避险观察",
+        "two_way": "双向波动",
+        "event_driven": "事件驱动观察",
+        "neutral": "中性 / 观望",
+    },
+}
+
+DIVERSITY_LABELS = {
+    "en": {
+        "broad": "Broad coverage",
+        "balanced": "Balanced coverage",
+        "concentrated": "Concentrated coverage",
+        "single_source": "Single-source coverage",
+    },
+    "zh": {
+        "broad": "覆盖面广",
+        "balanced": "覆盖均衡",
+        "concentrated": "来源集中",
+        "single_source": "单一来源",
+    },
+}
+
 
 @dataclass
 class NewsSignal:
@@ -179,6 +216,41 @@ class NewsIntelligence:
     @property
     def high_urgency(self) -> list[NewsSignal]:
         return sorted([s for s in self.signals if s.urgency > 0], key=lambda s: s.urgency, reverse=True)
+
+    @property
+    def total_articles(self) -> int:
+        return sum(self.top_sources.values())
+
+    @property
+    def source_diversity_score(self) -> float:
+        if not self.total_articles:
+            return 0.0
+        return min(1.0, len(self.top_sources) / self.total_articles)
+
+    @property
+    def source_diversity_key(self) -> str:
+        if len(self.top_sources) <= 1:
+            return "single_source"
+        if self.source_diversity_score >= 0.75:
+            return "broad"
+        if self.source_diversity_score >= 0.45:
+            return "balanced"
+        return "concentrated"
+
+    @property
+    def market_regime_key(self) -> str:
+        positive = self.tone_counts.get("positive", 0)
+        negative = self.tone_counts.get("negative", 0)
+        urgent_negative = any(signal.urgency > 0 and signal.tone == "negative" for signal in self.signals)
+        if negative > positive and (urgent_negative or self.high_urgency):
+            return "risk_off"
+        if positive > negative and not urgent_negative:
+            return "risk_on"
+        if positive and negative:
+            return "two_way"
+        if self.high_urgency:
+            return "event_driven"
+        return "neutral"
 
 
 def classify_category(text: str) -> str:
@@ -253,10 +325,35 @@ def build_news_intelligence(news_items: list[dict], max_signals: int = 8) -> New
     )
 
 
+def _scenario_playbook_lines(intelligence: NewsIntelligence, language: str) -> list[str]:
+    labels = CATEGORY_LABELS.get(language, CATEGORY_LABELS["en"])
+    tone_labels = TONE_LABELS.get(language, TONE_LABELS["en"])
+    dominant = labels.get(intelligence.dominant_category, intelligence.dominant_category)
+    tone = tone_labels.get(intelligence.dominant_tone, intelligence.dominant_tone)
+
+    if language == "zh":
+        return [
+            f"- 基准情景：**{dominant}** 仍是主线，当前新闻基调偏 **{tone}**，需用市场价格和成交量验证。",
+            "- 乐观情景：正面催化剂从单点扩散到多来源、多资产，且高优先级风险信号降温。",
+            "- 悲观情景：高优先级催化剂升级，或负面叙事从主要来源扩散到更广新闻面。",
+            f"- 需要验证：关注 **{dominant}** 新闻是否延续、来源覆盖是否扩大，以及紧迫信号是否跨资产传导。",
+        ]
+
+    return [
+        f"- Base case: **{dominant}** remains the main driver with a **{tone}** news tone; confirm with price and volume data.",
+        "- Bull case: Positive catalysts broaden across sources and assets while high-priority risk signals fade.",
+        "- Bear case: High-priority catalysts intensify or negative narratives spread beyond the leading sources.",
+        f"- Confirmation watch: Track **{dominant}** follow-through, source breadth, and whether urgent items become cross-asset.",
+    ]
+
+
 def render_news_intelligence_markdown(news_items: list[dict], language: str = "en", max_signals: int = 8) -> str:
     """Render a concise market-intelligence dashboard in Markdown."""
     intelligence = build_news_intelligence(news_items, max_signals=max_signals)
     labels = CATEGORY_LABELS.get(language, CATEGORY_LABELS["en"])
+    tone_labels = TONE_LABELS.get(language, TONE_LABELS["en"])
+    regime_labels = MARKET_REGIME_LABELS.get(language, MARKET_REGIME_LABELS["en"])
+    diversity_labels = DIVERSITY_LABELS.get(language, DIVERSITY_LABELS["en"])
     if not intelligence.signals:
         return ""
 
@@ -264,24 +361,33 @@ def render_news_intelligence_markdown(news_items: list[dict], language: str = "e
         title = "## 新闻智能信号图谱"
         category_line = "- 主导主题"
         tone_line = "- 新闻基调"
+        regime_line = "- 市场状态"
+        diversity_line = "- 来源覆盖"
         source_line = "- 主要来源"
         urgency_title = "### 高优先级催化剂"
         signal_title = "### 代表性信号"
+        playbook_title = "### 情景推演与验证清单"
         no_urgency = "- 暂无明显高紧迫性催化剂。"
     else:
         title = "## News Intelligence Signal Map"
         category_line = "- Dominant theme"
         tone_line = "- News tone"
+        regime_line = "- Market regime"
+        diversity_line = "- Coverage diversity"
         source_line = "- Leading sources"
         urgency_title = "### High-Priority Catalysts"
         signal_title = "### Representative Signals"
+        playbook_title = "### Scenario Playbook"
         no_urgency = "- No high-urgency catalyst detected."
 
     top_sources = ", ".join(f"{source} ({count})" for source, count in intelligence.top_sources.most_common(3))
     lines = [
         title,
         f"{category_line}: **{labels.get(intelligence.dominant_category, intelligence.dominant_category)}**",
-        f"{tone_line}: **{intelligence.dominant_tone}**",
+        f"{tone_line}: **{tone_labels.get(intelligence.dominant_tone, intelligence.dominant_tone)}**",
+        f"{regime_line}: **{regime_labels.get(intelligence.market_regime_key, intelligence.market_regime_key)}**",
+        f"{diversity_line}: **{diversity_labels.get(intelligence.source_diversity_key, intelligence.source_diversity_key)}** "
+        f"({intelligence.source_diversity_score:.0%})",
         f"{source_line}: {top_sources or 'N/A'}",
         "",
         urgency_title,
@@ -291,7 +397,8 @@ def render_news_intelligence_markdown(news_items: list[dict], language: str = "e
     if urgent:
         for signal in urgent:
             lines.append(
-                f"- [{labels.get(signal.category, signal.category)} | {signal.tone}] {signal.title} — {signal.source}"
+                f"- [{labels.get(signal.category, signal.category)} | "
+                f"{tone_labels.get(signal.tone, signal.tone)}] {signal.title} — {signal.source}"
             )
     else:
         lines.append(no_urgency)
@@ -299,8 +406,11 @@ def render_news_intelligence_markdown(news_items: list[dict], language: str = "e
     lines.extend(["", signal_title])
     for signal in intelligence.signals[:5]:
         lines.append(
-            f"- [{labels.get(signal.category, signal.category)} | {signal.tone} | urgency {signal.urgency}] "
+            f"- [{labels.get(signal.category, signal.category)} | "
+            f"{tone_labels.get(signal.tone, signal.tone)} | urgency {signal.urgency}] "
             f"{signal.title} — {signal.source}"
         )
+
+    lines.extend(["", playbook_title, *_scenario_playbook_lines(intelligence, language)])
 
     return "\n".join(lines)
