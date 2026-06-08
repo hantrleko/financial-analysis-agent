@@ -22,7 +22,9 @@ def test_build_news_context():
             "full_content": "Full article about oil prices dropping significantly due to oversupply.",
         },
     ]
-    ctx = analyzer._build_news_context(items)
+    ctx = analyzer._build_news_context(items, language="en")
+    assert "News Intelligence Signal Map" in ctx
+    assert "Dominant theme" in ctx
     assert "Stock rises" in ctx
     assert "Oil drops" in ctx
     assert "Full article about oil" in ctx
