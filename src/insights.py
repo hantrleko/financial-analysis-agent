@@ -211,6 +211,34 @@ DIVERSITY_LABELS = {
     },
 }
 
+CONVICTION_LABELS = {
+    "en": {
+        "high": "High conviction",
+        "moderate": "Moderate conviction",
+        "low": "Low conviction",
+    },
+    "zh": {
+        "high": "高置信度",
+        "moderate": "中等置信度",
+        "low": "低置信度",
+    },
+}
+
+TENSION_LABELS = {
+    "en": {
+        "directional": "Directional narrative",
+        "mixed": "Mixed but tilted",
+        "conflicted": "Conflicting signals",
+        "low_signal": "Low signal density",
+    },
+    "zh": {
+        "directional": "方向明确",
+        "mixed": "多空混合但有倾向",
+        "conflicted": "信号冲突",
+        "low_signal": "信号密度偏低",
+    },
+}
+
 HORIZON_LABELS = {
     "en": {
         "intraday": "Intraday / 24h",
@@ -313,6 +341,69 @@ class NewsIntelligence:
     @property
     def primary_assets(self) -> list[str]:
         return [asset for asset, _count in self.asset_counts.most_common(5)]
+
+    @property
+    def dominant_category_share(self) -> float:
+        if not self.total_articles:
+            return 0.0
+        return self.category_counts.get(self.dominant_category, 0) / self.total_articles
+
+    @property
+    def tone_alignment_share(self) -> float:
+        if not self.total_articles:
+            return 0.0
+        directional_count = max(self.tone_counts.get("positive", 0), self.tone_counts.get("negative", 0))
+        return directional_count / self.total_articles
+
+    @property
+    def urgent_share(self) -> float:
+        if not self.total_articles:
+            return 0.0
+        return len(self.high_urgency) / self.total_articles
+
+    @property
+    def asset_focus_share(self) -> float:
+        if not self.total_articles or not self.asset_counts:
+            return 0.0
+        return self.asset_counts.most_common(1)[0][1] / self.total_articles
+
+    @property
+    def conviction_score(self) -> int:
+        if not self.total_articles:
+            return 0
+        source_breadth = self.source_diversity_score if len(self.top_sources) > 1 else 0.0
+        theme_strength = 0.0 if self.dominant_category == "other" else self.dominant_category_share
+        urgent_strength = min(1.0, self.urgent_share * 2)
+        score = round(
+            100
+            * (
+                0.25 * source_breadth
+                + 0.25 * theme_strength
+                + 0.20 * self.tone_alignment_share
+                + 0.15 * urgent_strength
+                + 0.15 * self.asset_focus_share
+            )
+        )
+        return max(0, min(100, score))
+
+    @property
+    def conviction_key(self) -> str:
+        if self.conviction_score >= 75:
+            return "high"
+        if self.conviction_score >= 50:
+            return "moderate"
+        return "low"
+
+    @property
+    def narrative_tension_key(self) -> str:
+        positive = self.tone_counts.get("positive", 0)
+        negative = self.tone_counts.get("negative", 0)
+        if positive and negative:
+            conflict_ratio = min(positive, negative) / max(positive, negative)
+            return "conflicted" if conflict_ratio >= 0.75 else "mixed"
+        if self.tone_alignment_share >= 0.5:
+            return "directional"
+        return "low_signal"
 
     @property
     def dominant_horizon(self) -> str:
@@ -463,6 +554,28 @@ def _scenario_playbook_lines(intelligence: NewsIntelligence, language: str) -> l
     ]
 
 
+def _narrative_monitor_lines(intelligence: NewsIntelligence, language: str) -> list[str]:
+    conviction_labels = CONVICTION_LABELS.get(language, CONVICTION_LABELS["en"])
+    tension_labels = TENSION_LABELS.get(language, TENSION_LABELS["en"])
+    conviction = conviction_labels.get(intelligence.conviction_key, intelligence.conviction_key)
+    tension = tension_labels.get(intelligence.narrative_tension_key, intelligence.narrative_tension_key)
+    dominant_share = f"{intelligence.dominant_category_share:.0%}"
+    tone_share = f"{intelligence.tone_alignment_share:.0%}"
+
+    if language == "zh":
+        return [
+            f"- 叙事置信度：**{conviction} ({intelligence.conviction_score}/100)**，衡量来源广度、主题集中度、语气一致性、紧迫性和资产聚焦度。",
+            f"- 叙事张力：**{tension}**；主导主题占比 **{dominant_share}**，方向性语气占比 **{tone_share}**。",
+            "- 使用方式：高置信度适合作为报告主线；信号冲突时应降低仓位假设并强调等待确认。",
+        ]
+
+    return [
+        f"- Narrative conviction: **{conviction} ({intelligence.conviction_score}/100)** across source breadth, theme focus, tone alignment, urgency, and asset focus.",
+        f"- Narrative tension: **{tension}**; dominant theme share is **{dominant_share}** and directional tone share is **{tone_share}**.",
+        "- How to use it: high conviction can anchor the report thesis; conflicting signals should reduce position-size assumptions and emphasize confirmation.",
+    ]
+
+
 def _decision_checklist_lines(intelligence: NewsIntelligence, language: str) -> list[str]:
     horizon_labels = HORIZON_LABELS.get(language, HORIZON_LABELS["en"])
     regime_labels = MARKET_REGIME_LABELS.get(language, MARKET_REGIME_LABELS["en"])
@@ -494,6 +607,8 @@ def render_news_intelligence_markdown(news_items: list[dict], language: str = "e
     regime_labels = MARKET_REGIME_LABELS.get(language, MARKET_REGIME_LABELS["en"])
     diversity_labels = DIVERSITY_LABELS.get(language, DIVERSITY_LABELS["en"])
     horizon_labels = HORIZON_LABELS.get(language, HORIZON_LABELS["en"])
+    conviction_labels = CONVICTION_LABELS.get(language, CONVICTION_LABELS["en"])
+    tension_labels = TENSION_LABELS.get(language, TENSION_LABELS["en"])
     if not intelligence.signals:
         return ""
 
@@ -506,8 +621,11 @@ def render_news_intelligence_markdown(news_items: list[dict], language: str = "e
         source_line = "- 主要来源"
         asset_line = "- 资产影响雷达"
         horizon_line = "- 验证窗口"
+        conviction_line = "- 叙事置信度"
+        tension_line = "- 叙事张力"
         urgency_title = "### 高优先级催化剂"
         asset_title = "### 资产影响雷达"
+        narrative_title = "### 叙事置信度监控"
         checklist_title = "### 决策检查清单"
         signal_title = "### 代表性信号"
         playbook_title = "### 情景推演与验证清单"
@@ -523,8 +641,11 @@ def render_news_intelligence_markdown(news_items: list[dict], language: str = "e
         source_line = "- Leading sources"
         asset_line = "- Asset impact radar"
         horizon_line = "- Validation horizon"
+        conviction_line = "- Narrative conviction"
+        tension_line = "- Narrative tension"
         urgency_title = "### High-Priority Catalysts"
         asset_title = "### Asset Impact Radar"
+        narrative_title = "### Narrative Conviction Monitor"
         checklist_title = "### Decision Checklist"
         signal_title = "### Representative Signals"
         playbook_title = "### Scenario Playbook"
@@ -544,6 +665,9 @@ def render_news_intelligence_markdown(news_items: list[dict], language: str = "e
         f"{source_line}: {top_sources or 'N/A'}",
         f"{asset_line}: {top_assets or 'N/A'}",
         f"{horizon_line}: **{horizon_labels.get(intelligence.dominant_horizon, intelligence.dominant_horizon)}**",
+        f"{conviction_line}: **{conviction_labels.get(intelligence.conviction_key, intelligence.conviction_key)}** "
+        f"({intelligence.conviction_score}/100)",
+        f"{tension_line}: **{tension_labels.get(intelligence.narrative_tension_key, intelligence.narrative_tension_key)}**",
         "",
         urgency_title,
     ]
@@ -565,6 +689,7 @@ def render_news_intelligence_markdown(news_items: list[dict], language: str = "e
     else:
         lines.append(no_assets)
 
+    lines.extend(["", narrative_title, *_narrative_monitor_lines(intelligence, language)])
     lines.extend(["", checklist_title, *_decision_checklist_lines(intelligence, language)])
 
     lines.extend(["", signal_title])

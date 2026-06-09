@@ -257,9 +257,9 @@ Keep it professional, data-driven, yet engaging."""
         parts.append("- Distinguish between confirmed facts and market speculation — label speculation clearly")
         parts.append("- Prioritize information by market impact: lead with what matters most to investors")
         parts.append(
-            "- Use the News Intelligence Signal Map, Asset Impact Radar, Decision Checklist, and Scenario Playbook to "
-            "frame the dominant theme, market regime, affected instruments, validation horizon, and what evidence would "
-            "confirm or invalidate the base case"
+            "- Use the News Intelligence Signal Map, Asset Impact Radar, Narrative Conviction Monitor, Decision Checklist, "
+            "and Scenario Playbook to frame the dominant theme, market regime, affected instruments, validation horizon, "
+            "narrative confidence, and what evidence would confirm or invalidate the base case"
         )
         parts.append(f"{sec}{lang}")
 
