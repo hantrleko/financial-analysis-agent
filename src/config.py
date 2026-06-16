@@ -3,7 +3,7 @@
 所有可调参数统一在此维护，各模块通过 from src.config import ... 引用。
 """
 
-VERSION = "v2.2"
+VERSION = "v2.3"
 
 # ──────────────────── 抓取参数 ────────────────────
 MAX_SCRAPE_CHARS = 4000  # 每篇文章最大抓取字符数
@@ -244,6 +244,12 @@ VIX_LEVELS = {
 
 # ──────────────────── LLM 后端配置 ────────────────────
 LLM_PROVIDERS = {
+    "rule_based": {
+        "name": "No AI (Rule-based) 🧠",
+        "env_key": "",
+        "base_url": "",
+        "model": "rule-based",
+    },
     "zhipu": {
         "name": "GLM-4-Flash ✨ 免费",
         "env_key": "ZHIPU_API_KEY",

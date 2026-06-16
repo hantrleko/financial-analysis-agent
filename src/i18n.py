@@ -70,6 +70,7 @@ I18N = {
         "en": "Gemini 2.5 Flash (default) — fast, high quality, free tier available",
         "zh": "Gemini 2.5 Flash（默认）— 快速、高质量、免费额度可用",
     },
+    "llm_rule_mode": {"en": "No API mode: deterministic rule-based template analysis", "zh": "无 API 模式：规则模板 + 公式化逻辑分析"},
     "gemini_model": {"en": "Gemini Model", "zh": "Gemini 模型"},
     "gemini_model_help": {
         "en": "Override the default Gemini model. Can also be set via GEMINI_MODEL env var.",

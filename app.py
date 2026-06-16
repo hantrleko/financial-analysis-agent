@@ -144,30 +144,35 @@ with st.sidebar.expander(t("basic_settings"), expanded=True):
     )
     llm_provider = _llm_options[_llm_selected_name]
     _llm_env_key = LLM_PROVIDERS[llm_provider]["env_key"]
-    if not get_api_key(_llm_env_key):
+    if _llm_env_key and not get_api_key(_llm_env_key):
         st.warning(
             "当前选择的 LLM Provider 缺少 API Key，分析时可能失败。"
             if language == "zh"
             else "The selected LLM provider is missing its API key, so analysis may fail."
         )
+    elif llm_provider == "rule_based":
+        st.info(t("llm_rule_mode"))
 
-    _gemini_model_choices = [
-        "gemini-2.5-flash",
-        "gemini-2.5-pro",
-        "gemini-2.0-flash",
-        "gemini-2.0-flash-lite",
-    ]
-    _default_gemini_model = os.getenv("GEMINI_MODEL", _gemini_model_choices[0])
-    _gemini_model_idx = (
-        _gemini_model_choices.index(_default_gemini_model) if _default_gemini_model in _gemini_model_choices else 0
-    )
-    _selected_gemini_model = st.selectbox(
-        t("gemini_model"),
-        options=_gemini_model_choices,
-        index=_gemini_model_idx,
-        help=t("gemini_model_help"),
-    )
-    os.environ["GEMINI_MODEL"] = _selected_gemini_model
+    if llm_provider == "rule_based":
+        os.environ.pop("GEMINI_MODEL", None)
+    else:
+        _gemini_model_choices = [
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
+        ]
+        _default_gemini_model = os.getenv("GEMINI_MODEL", _gemini_model_choices[0])
+        _gemini_model_idx = (
+            _gemini_model_choices.index(_default_gemini_model) if _default_gemini_model in _gemini_model_choices else 0
+        )
+        _selected_gemini_model = st.selectbox(
+            t("gemini_model"),
+            options=_gemini_model_choices,
+            index=_gemini_model_idx,
+            help=t("gemini_model_help"),
+        )
+        os.environ["GEMINI_MODEL"] = _selected_gemini_model
 
     query = st.text_input(
         t("search_query"),
@@ -268,8 +273,8 @@ with st.sidebar.expander(t("advanced_settings"), expanded=False):
     )
     ai_search = st.checkbox(
         t("ai_search"),
-        value=preset_cfg["ai_search"] if is_preset else True,
-        disabled=not deep_analysis,
+        value=preset_cfg["ai_search"] if is_preset and llm_provider != "rule_based" else False,
+        disabled=not deep_analysis or llm_provider == "rule_based",
         help=t("ai_search_help"),
     )
     scrape_content = st.checkbox(

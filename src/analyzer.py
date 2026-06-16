@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from collections import Counter
 from collections.abc import Generator
 from datetime import datetime, timezone
 
@@ -36,6 +37,56 @@ GEMINI_SYSTEM_INSTRUCTION = (
     "If asked for a detailed report, produce a FULL detailed report with all sections completed in depth."
 )
 
+_RULE_POSITIVE_KEYWORDS = [
+    "beat",
+    "beats",
+    "surge",
+    "rally",
+    "growth",
+    "upgrade",
+    "positive",
+    "strong",
+    "outperform",
+    "gain",
+    "record",
+    "rebound",
+    "上涨",
+    "上升",
+    "利好",
+    "创新高",
+    "突破",
+]
+
+_RULE_NEGATIVE_KEYWORDS = [
+    "miss",
+    "missed",
+    "downgrade",
+    "decline",
+    "plunge",
+    "crash",
+    "fall",
+    "weak",
+    "loss",
+    "risk",
+    "concern",
+    "pressure",
+    "drop",
+    "下跌",
+    "暴跌",
+    "下滑",
+    "利空",
+    "亏损",
+]
+
+_RULE_SECTOR_KEYWORDS = {
+    "macro": ["inflation", "fed", "rates", "interest", "gdp", "unemployment", "央行", "利率", "货币", "cpi", "pmi", "就业"],
+    "stocks": ["earnings", "revenue", "profit", "ai", "股市", "财报", "个股", "股票", "downgrade", "upgrade"],
+    "commodities": ["oil", "gold", "commodity", "crude", "铜", "大宗商品", "金", "油", "铜", "原油"],
+    "crypto": ["bitcoin", "btc", "ether", "crypto", "etf", "staked", "比特币", "加密"],
+    "forex": ["dollar", "eur", "usd", "yen", "exchange rate", "forex", "人民币", "外汇", "汇率", "美元", "欧元", "日元"],
+    "bonds": ["yield", "treasury", "bond", "credit", "spreads", "债券", "利率债", "收益率", "收益", "信用"],
+}
+
 
 class FinancialAnalyzer:
     def __init__(self, provider: str | None = None, briefing_length: str = "medium") -> None:
@@ -48,7 +99,10 @@ class FinancialAnalyzer:
         cfg = LLM_PROVIDERS.get(self.provider)
         if not cfg:
             raise ValueError(f"Unknown LLM provider: {self.provider}")
-        api_key = get_api_key(cfg["env_key"])
+        env_key = cfg.get("env_key", "")
+        if not env_key:
+            return
+        api_key = get_api_key(env_key)
         if not api_key:
             logger.warning("API key %s not set for provider %s", cfg["env_key"], self.provider)
 
@@ -211,6 +265,242 @@ Keep it professional, data-driven, yet engaging."""
         if sections:
             return "\n\n".join(sections)[:max_chars]
         return report[:max_chars]
+
+    @staticmethod
+    def _safe_lower(value: str) -> str:
+        return (value or "").lower()
+
+    @staticmethod
+    def _count_hits(value: str, keywords: list[str]) -> int:
+        lowered = FinancialAnalyzer._safe_lower(value)
+        return sum(lowered.count(keyword.lower()) for keyword in keywords)
+
+    @staticmethod
+    def _chunk_text(value: str, chunk_size: int = 900):
+        for i in range(0, len(value), chunk_size):
+            yield value[i : i + chunk_size]
+
+    @staticmethod
+    def _label_for_score(score: float, language: str = "en") -> str:
+        if score >= 0.5:
+            return "偏多" if language == "zh" else "bullish"
+        if score <= -0.5:
+            return "偏空" if language == "zh" else "bearish"
+        return "中性" if language == "zh" else "neutral"
+
+    def _provider_key_available(self, provider_key: str) -> bool:
+        cfg = LLM_PROVIDERS.get(provider_key)
+        if not cfg:
+            return False
+        if provider_key == "rule_based":
+            return True
+        env_key = cfg.get("env_key", "")
+        if not env_key:
+            return False
+        return bool(get_api_key(env_key))
+
+    @staticmethod
+    def _normalize_text_block(item: dict) -> str:
+        return " ".join(filter(None, [item.get("title", ""), item.get("description", ""), item.get("full_content", "")]))
+
+    @staticmethod
+    def _parse_snapshot(snapshot: str) -> list[tuple[str, float]]:
+        if not snapshot:
+            return []
+        movers: list[tuple[str, float]] = []
+        pattern = re.compile(r":\s*[-+]?\d+(?:\.\d+)?\s*\(([-+]?\d+(?:\.\d+)?)%")
+        for line in snapshot.splitlines():
+            try:
+                match = pattern.search(line)
+                if not match:
+                    continue
+                name = line.split(":")[0].strip(" -*")
+                delta = float(match.group(1))
+                movers.append((name, delta))
+            except Exception:
+                continue
+        return movers
+
+    def _analyze_news_signal(self, news_items: list[dict], language: str) -> tuple[list[dict], Counter]:
+        article_scores = []
+        sector_hits = Counter()
+        for item in news_items:
+            text = self._normalize_text_block(item)
+            pos = self._count_hits(text, _RULE_POSITIVE_KEYWORDS)
+            neg = self._count_hits(text, _RULE_NEGATIVE_KEYWORDS)
+            score = pos - neg
+            if score > 0:
+                emotion = "bullish"
+            elif score < 0:
+                emotion = "bearish"
+            else:
+                emotion = "neutral"
+
+            sector_marks = {}
+            for sector, kws in _RULE_SECTOR_KEYWORDS.items():
+                s = self._count_hits(text, kws)
+                if s > 0:
+                    sector_marks[sector] = s
+                    sector_hits[sector] += s
+
+            sector = sorted(sector_marks.items(), key=lambda it: it[1], reverse=True)[0][0] if sector_marks else "macro"
+            article_scores.append(
+                {
+                    "title": item.get("title", "Untitled") or "Untitled",
+                    "source": item.get("source", "Unknown"),
+                    "score": score,
+                    "emotion": emotion,
+                    "emotion_label": self._label_for_score(score, language=language),
+                    "sector": sector,
+                }
+            )
+
+        article_scores.sort(key=lambda it: abs(it["score"]), reverse=True)
+        return article_scores, sector_hits
+
+    def _build_rule_based_report(
+        self,
+        news_items: list[dict],
+        briefing_length: str,
+        language: str,
+        sectors: list[str] | None = None,
+        snapshot: str | None = None,
+        previous_report: str | None = None,
+        time_range: str = "week",
+    ) -> str:
+        signals, sector_hits = self._analyze_news_signal(news_items, language)
+        if sectors:
+            wanted = set(sectors)
+            signals = [s for s in signals if s["sector"] in wanted]
+            sector_hits = Counter(item["sector"] for item in signals)
+
+        article_count = len(signals)
+        movers = self._parse_snapshot(snapshot or "")
+        movers_top = sorted(movers, key=lambda it: abs(it[1]), reverse=True)[:3]
+        bull_count = sum(1 for item in signals if item["emotion"] == "bullish")
+        bear_count = sum(1 for item in signals if item["emotion"] == "bearish")
+        sentiment_index = round((bull_count - bear_count) / article_count, 2) if article_count else 0.0
+
+        top_sector = sector_hits.most_common(1)[0][0] if sector_hits else "macro"
+
+        title_zh = "# 金融市场简报（规则模式）"
+        title_en = "# Financial Briefing (Rule-based)"
+        title = title_zh if language == "zh" else title_en
+        detail_note = (
+            "说明：本模式为纯规则化模板，不调用外部模型。\n\n"
+            if language == "zh"
+            else "Note: this is deterministic rule-based output without external model calls.\n\n"
+        )
+
+        if language == "zh":
+            lines = [
+                title,
+                detail_note,
+                "## 1) 情绪与主题聚合",
+                f"- 文章样本数：{article_count}",
+                f"- 多头：{bull_count}，空头：{bear_count}，中性：{article_count - bull_count - bear_count}",
+                f"- 综合情绪指数：`(多头-空头)/样本数 = ({bull_count}-{bear_count})/{article_count} = {sentiment_index}`",
+                f"- 情绪标签：**{self._label_for_score(sentiment_index, 'zh')}**",
+                f"- 主题主导：**{top_sector}**",
+                "\n## 2) 关键新闻链条",
+            ]
+            for idx, item in enumerate(signals[:3], start=1):
+                lines.append(f"{idx}. [{item['source']}] {item['title']}（{item['emotion_label']}，评分{item['score']}）")
+        else:
+            lines = [
+                title,
+                detail_note,
+                "## 1) Sentiment and Theme Aggregation",
+                f"- Sample size: {article_count}",
+                f"- Bullish: {bull_count}, Bearish: {bear_count}, Neutral: {article_count - bull_count - bear_count}",
+                f"- Sentiment index: `(bullish - bearish)/count = ({bull_count}-{bear_count})/{article_count} = {sentiment_index}`",
+                f"- Sentiment label: **{self._label_for_score(sentiment_index, 'en')}**",
+                f"- Dominant theme: **{top_sector}**",
+                "\n## 2) Key News Chains",
+            ]
+            for idx, item in enumerate(signals[:3], start=1):
+                lines.append(f"{idx}. [{item['source']}] {item['title']} (score {item['score']}, {item['emotion_label']})")
+
+        if language == "zh":
+            lines.extend(["", "## 3) 市场快照（近5日）"])
+            if movers_top:
+                for name, delta in movers_top:
+                    direction = "上行" if delta >= 0 else "下行"
+                    lines.append(f"- {name}：{direction}{delta:+.2f}%")
+            else:
+                lines.append("- 快照暂不可用（后备模式已继续输出）")
+        else:
+            lines.extend(["", "## 3) Market Snapshot (5-day proxy)"])
+            if movers_top:
+                for name, delta in movers_top:
+                    direction = "up" if delta >= 0 else "down"
+                    lines.append(f"- {name}: {direction} {delta:+.2f}%")
+            else:
+                lines.append("- Snapshot unavailable; rule mode continues with available textual signals.")
+
+        if language == "zh":
+            lines.extend(
+                [
+                    "\n## 4) 可执行建议",
+                    "- 优先级 A：先做风控，再做观点；先控风险再博主观方向。",
+                    "- 优先级 B：任何新闻结论先用“数据放大率”验证，避免单稿噪音。",
+                    "- 优先级 C：若连续两次情绪指数反向，才调整核心仓位。",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "\n## 4) Action Checklist",
+                    "- Priority A: prioritize risk control before directional positioning.",
+                    "- Priority B: only validate via data amplification before converting narrative to action.",
+                    "- Priority C: adjust core allocation only after two consecutive opposite sentiment checks.",
+                ]
+            )
+
+        if previous_report:
+            prev_excerpt = previous_report[: min(280, len(previous_report))]
+            if language == "zh":
+                lines.extend(
+                    [
+                        "\n## 5) 与上期对比（摘要）",
+                        f"- 样本对比：当前 {article_count} 篇；上期摘要 {len(previous_report)} 字。",
+                        f"- 上期摘要：{prev_excerpt}",
+                    ]
+                )
+            else:
+                lines.extend(
+                    [
+                        "\n## 5) Prior Report Diff (summary)",
+                        f"- Sample compare: current {article_count} items vs prior summary length {len(previous_report)} chars.",
+                        f"- Prior excerpt: {prev_excerpt}",
+                    ]
+                )
+
+        if briefing_length == "detailed":
+            if language == "zh":
+                lines.extend(
+                    [
+                        "\n## 6) 规则因果链解释（可复核）",
+                        "- 规则：`情绪强度 × 快照动量`，若二者同向则提高优先级，否则降权。",
+                        f"- 计算示例：`{sentiment_index}` × `{movers_top[0][1] if movers_top else 0:.2f}%` = "
+                        f"`{sentiment_index * (movers_top[0][1] if movers_top else 0):.2f}`",
+                        "- 只要快照与新闻方向出现背离，则等待下一轮样本再下决策。",
+                        "- 结论：本报告仅作为研究型市场框架，不构成投资建议。",
+                    ]
+                )
+            else:
+                lines.extend(
+                    [
+                        "\n## 6) Rule-based causal logic",
+                        "- Rule: `sentiment intensity × snapshot momentum`; same direction raises confidence, opposite weakens it.",
+                        f"- Example: `{sentiment_index}` × `{movers_top[0][1] if movers_top else 0:.2f}%` = "
+                        f"`{sentiment_index * (movers_top[0][1] if movers_top else 0):.2f}`",
+                        "- Do not change positioning if narrative and snapshot direction diverge.",
+                        "- This report is for research use only, not investment advice.",
+                    ]
+                )
+
+        return "\n".join(lines)
 
     # ──────────────── 构建 Agent Input ────────────────
 
@@ -538,10 +828,31 @@ Keep it professional, data-driven, yet engaging."""
             previous_report=previous_report,
         )
 
+        provider = DEEP_LLM_PROVIDER if deep_analysis else self.provider
+        if not self._provider_key_available(provider):
+            return self._build_rule_based_report(
+                news_items=news_items,
+                briefing_length=briefing_length,
+                language=language,
+                sectors=sectors,
+                snapshot=snapshot,
+                previous_report=previous_report,
+                time_range=time_range,
+            )
+
         try:
             return self._call_llm(input_text, deep_analysis=deep_analysis)
         except Exception as e:
-            return f"Analysis failed: {e}"
+            logger.warning("LLM analysis failed: %s. Falling back to rule-based report.", e)
+            return self._build_rule_based_report(
+                news_items=news_items,
+                briefing_length=briefing_length,
+                language=language,
+                sectors=sectors,
+                snapshot=snapshot,
+                previous_report=previous_report,
+                time_range=time_range,
+            )
 
     def _call_llm_stream(self, input_text: str, deep_analysis: bool = False) -> Generator[str, None, None]:
         """
@@ -602,10 +913,42 @@ Keep it professional, data-driven, yet engaging."""
             previous_report=previous_report,
         )
 
+        provider = DEEP_LLM_PROVIDER if deep_analysis else self.provider
+        if not self._provider_key_available(provider):
+            if on_status:
+                on_status("📊 Analyzing with Rule-based engine..." if language == "en" else "📊 使用规则引擎分析中...")
+            for chunk in self._chunk_text(
+                self._build_rule_based_report(
+                    news_items=news_items,
+                    briefing_length=briefing_length,
+                    language=language,
+                    sectors=sectors,
+                    snapshot=snapshot,
+                    previous_report=previous_report,
+                    time_range=time_range,
+                )
+            ):
+                yield chunk
+            return
+
         try:
             yield from self._call_llm_stream(input_text, deep_analysis=deep_analysis)
         except Exception as e:
-            yield f"Analysis failed: {e}"
+            logger.warning("LLM streaming failed: %s. Falling back to rule-based report.", e)
+            if on_status:
+                on_status("📊 Falling back to rule-based engine..." if language == "en" else "📊 回退到规则引擎...")
+            for chunk in self._chunk_text(
+                self._build_rule_based_report(
+                    news_items=news_items,
+                    briefing_length=briefing_length,
+                    language=language,
+                    sectors=sectors,
+                    snapshot=snapshot,
+                    previous_report=previous_report,
+                    time_range=time_range,
+                )
+            ):
+                yield chunk
 
     def save_analysis(self, analysis_text: str, filename: str = "data/daily_report.md") -> None:
         """保存分析报告到 Markdown 文件。"""
