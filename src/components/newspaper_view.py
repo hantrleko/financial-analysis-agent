@@ -223,23 +223,32 @@ def render_newspaper(report_md: str, theme_name: str = "classic") -> str:
 
     html += '<hr class="np-heavy-divider">\n'
 
-    # 版面分布：长报告分两段双栏，短报告单段双栏
-    if len(sections) >= 4:
-        mid = (len(sections) + 1) // 2
-        groups = [sections[:mid], sections[mid:]]
+    if not sections:
+        html += '<div class="np-columns one-col">\n<div class="np-column"><div class="np-section">No content</div></div>\n</div>'
     else:
-        groups = [sections]
+        col_count_cls = "two-col" if len(sections) > 1 else "one-col"
+        mid = (len(sections) + 1) // 2
+        left_sections = sections[:mid]
+        right_sections = sections[mid:]
 
-    for gi, group in enumerate(groups):
-        if gi > 0:
-            html += '<hr class="np-heavy-divider">\n'
-        html += '<div class="np-columns">\n'
-        for sec in group:
+        html += f'<div class="np-columns {col_count_cls}">\n'
+        html += "<div class=\"np-column\">\n"
+        for sec in left_sections:
             html += '<div class="np-section">\n'
             if sec["title"]:
                 html += f'<div class="np-section-title">{_inline_md(sec["title"])}</div>\n'
             html += f'<div class="np-body">{_md_to_html_body(sec["body"])}</div>\n'
             html += "</div>\n"
+        html += "</div>\n"
+
+        html += "<div class=\"np-column\">\n"
+        for sec in right_sections:
+            html += '<div class="np-section">\n'
+            if sec["title"]:
+                html += f'<div class="np-section-title">{_inline_md(sec["title"])}</div>\n'
+            html += f'<div class="np-body">{_md_to_html_body(sec["body"])}</div>\n'
+            html += "</div>\n"
+        html += "</div>\n"
         html += "</div>\n"
 
     # 页脚

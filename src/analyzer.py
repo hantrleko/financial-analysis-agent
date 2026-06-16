@@ -321,6 +321,17 @@ Keep it professional, data-driven, yet engaging."""
                 continue
         return movers
 
+    def _provider_display_name(self, provider_key: str) -> str:
+        return LLM_PROVIDERS.get(provider_key, {}).get("name", provider_key)
+
+    def _engine_markdown_header(self, provider_key: str, language: str = "en", fallback: bool = False) -> str:
+        engine_name = self._provider_display_name(provider_key)
+        if language == "zh":
+            suffix = "（回退引擎）" if fallback else "（已激活）"
+            return f"## 执行引擎：{engine_name}{suffix}\n\n"
+        suffix = " (Fallback Engine)" if fallback else " (Active)"
+        return f"## Execution Engine: {engine_name}{suffix}\n\n"
+
     def _analyze_news_signal(self, news_items: list[dict], language: str) -> tuple[list[dict], Counter]:
         article_scores = []
         sector_hits = Counter()
@@ -830,7 +841,7 @@ Keep it professional, data-driven, yet engaging."""
 
         provider = DEEP_LLM_PROVIDER if deep_analysis else self.provider
         if not self._provider_key_available(provider):
-            return self._build_rule_based_report(
+            rule_report = self._build_rule_based_report(
                 news_items=news_items,
                 briefing_length=briefing_length,
                 language=language,
@@ -839,12 +850,14 @@ Keep it professional, data-driven, yet engaging."""
                 previous_report=previous_report,
                 time_range=time_range,
             )
+            return self._engine_markdown_header("rule_based", language=language, fallback=False) + rule_report
 
         try:
-            return self._call_llm(input_text, deep_analysis=deep_analysis)
+            report = self._call_llm(input_text, deep_analysis=deep_analysis)
+            return self._engine_markdown_header(provider, language=language, fallback=False) + report
         except Exception as e:
             logger.warning("LLM analysis failed: %s. Falling back to rule-based report.", e)
-            return self._build_rule_based_report(
+            fallback_report = self._build_rule_based_report(
                 news_items=news_items,
                 briefing_length=briefing_length,
                 language=language,
@@ -853,6 +866,7 @@ Keep it professional, data-driven, yet engaging."""
                 previous_report=previous_report,
                 time_range=time_range,
             )
+            return self._engine_markdown_header("rule_based", language=language, fallback=True) + fallback_report
 
     def _call_llm_stream(self, input_text: str, deep_analysis: bool = False) -> Generator[str, None, None]:
         """
@@ -917,6 +931,7 @@ Keep it professional, data-driven, yet engaging."""
         if not self._provider_key_available(provider):
             if on_status:
                 on_status("📊 Analyzing with Rule-based engine..." if language == "en" else "📊 使用规则引擎分析中...")
+            yield self._engine_markdown_header("rule_based", language=language, fallback=False)
             for chunk in self._chunk_text(
                 self._build_rule_based_report(
                     news_items=news_items,
@@ -932,11 +947,13 @@ Keep it professional, data-driven, yet engaging."""
             return
 
         try:
+            yield self._engine_markdown_header(provider, language=language, fallback=False)
             yield from self._call_llm_stream(input_text, deep_analysis=deep_analysis)
         except Exception as e:
             logger.warning("LLM streaming failed: %s. Falling back to rule-based report.", e)
             if on_status:
                 on_status("📊 Falling back to rule-based engine..." if language == "en" else "📊 回退到规则引擎...")
+            yield self._engine_markdown_header("rule_based", language=language, fallback=True)
             for chunk in self._chunk_text(
                 self._build_rule_based_report(
                     news_items=news_items,

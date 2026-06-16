@@ -474,19 +474,27 @@ hr {
 
 /* 多栏布局 */
 .np-columns {
-    column-count: 2;
-    column-gap: 36px;
-    column-rule: 1px solid #ccc;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 36px;
     text-align: justify;
     hyphens: auto;
 }
 
+.np-columns.two-col {
+    grid-template-columns: 1fr 1fr;
+}
+
+.np-columns.one-col {
+    grid-template-columns: 1fr;
+}
+
+.np-column {
+    min-width: 0;
+}
+
 /* 文章区块 */
 .np-section {
-    break-inside: avoid-column;
-    -webkit-column-break-inside: avoid;
-    display: inline-block;
-    width: 100%;
     margin-bottom: 20px;
 }
 .np-section-title {
@@ -566,7 +574,9 @@ hr {
 /* ═══════════════ 移动端适配 ═══════════════ */
 @media (max-width: 768px) {
     .newspaper { padding: 20px 16px; }
-    .np-columns { column-count: 1 !important; }
+    .np-columns,
+    .np-columns.two-col,
+    .np-columns.one-col { grid-template-columns: 1fr !important; }
     .np-masthead-title { font-size: 24px !important; letter-spacing: 2px !important; }
     .np-headline { font-size: 22px !important; }
 
