@@ -3,7 +3,7 @@
 所有可调参数统一在此维护，各模块通过 from src.config import ... 引用。
 """
 
-VERSION = "v2.3"
+VERSION = "v2.4"
 
 # ──────────────────── 抓取参数 ────────────────────
 MAX_SCRAPE_CHARS = 4000  # 每篇文章最大抓取字符数
@@ -37,6 +37,8 @@ SOURCE_DOMAINS = {
     "Cls.cn": "cls.cn",
     "Eastmoney": "eastmoney.com",
 }
+
+CHINA_FOCUS_SOURCES = ["Sina Finance", "Cls.cn", "Eastmoney"]
 
 RSS_FEEDS = [
     {"url": "https://finance.yahoo.com/news/rssindex", "source": "Yahoo Finance"},
@@ -96,6 +98,14 @@ SNAPSHOT_TICKERS = {
     "USD/JPY": "JPY=X",
     "US 10Y Yield": "^TNX",
     "VIX": "^VIX",
+}
+
+SNAPSHOT_TICKERS_CHINA = {
+    "上证指数 SSE / 000001.SS": "000001.SS",
+    "沪深300 CSI 300 / 000300.SS": "000300.SS",
+    "深证成指 SZSE 399001": "399001.SZ",
+    "创业板指 399006": "399006.SZ",
+    "上证50 / 000016.SS": "000016.SS",
 }
 
 # ──────────────────── 上期报告注入 ────────────────────

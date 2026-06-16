@@ -11,7 +11,9 @@ from email.utils import parsedate_to_datetime
 from src.config import (
     DEDUP_SIMILARITY_THRESHOLD,
     GOOGLE_NEWS_RSS_TEMPLATE,
+    GOOGLE_NEWS_CN_RSS_TEMPLATE,
     GOOGLE_NEWS_TIME_MAP,
+    CHINA_FOCUS_SOURCES,
     LLM_PROVIDERS,
     MAX_SCRAPE_ARTICLES,
     MAX_SCRAPE_CHARS,
@@ -38,16 +40,24 @@ class NewsCollector:
         """
         获取新闻。
         ai_search=True: 先用 Gemini Search Grounding 联网搜索，再用 RSS 补充
-        ai_search=False: 纯 RSS，若未限制来源（或来源中包含 Google News）则补充 Google News RSS
+        ai_search=False: 纯 RSS。若 RSS 无返回，则按中文优先策略补充 Google News RSS
         """
         rss_items = self._fetch_rss(count=count, time_range=time_range, sources=sources)
         selected_sources = set(sources or [])
         has_google_filter = any("google news" in s.strip().lower() for s in selected_sources)
-        google_items = self._fetch_google_news_rss(query, count, time_range) if has_google_filter or not selected_sources else []
+        needs_google_fallback = has_google_filter or not selected_sources or not rss_items
+        google_items = self._fetch_google_news_rss(query, count, time_range, selected_sources) if needs_google_fallback else []
         base_items = self._dedup(google_items + rss_items, count)
 
         if not ai_search:
-            return base_items
+            if base_items:
+                return base_items
+            logger.warning("No RSS or Google News items found; returning empty result set.")
+            return []
+
+        if not base_items:
+            logger.info("No RSS/Google base items, trying Gemini Search grounding as hard fallback.")
+            base_items = []
 
         # AI 联网搜索 + RSS 合并去重
         ai_items = self._fetch_gemini_search(query, count, time_range)
@@ -125,26 +135,34 @@ class NewsCollector:
                         logger.warning("  %s: all attempts failed, skipping.", feed_info["source"])
 
         if not all_items:
-            logger.warning("All RSS feeds failed. Using mock data.")
-            return self._get_mock_data()
+            logger.warning("All RSS feeds failed.")
+            return []
 
         result = self._dedup(all_items, count)
         logger.info("Successfully fetched %d unique articles from %d RSS sources.", len(result), len(RSS_FEEDS))
         return result
 
-    def _fetch_google_news_rss(self, query: str, count: int = 10, time_range: str = "24h") -> list[dict[str, object]]:
+    @staticmethod
+    def _is_chinese_scope(selected_sources: set[str], query: str) -> bool:
+        has_chinese_sources = bool(selected_sources.intersection(CHINA_FOCUS_SOURCES))
+        query_text = (query or "").lower()
+        has_chinese_terms = bool(re.search(r"[\u4e00-\u9fff]", query_text))
+        has_english_china_terms = any(term in query_text for term in ["china", "a-share", "a share", "a股"])
+        return has_chinese_sources or has_chinese_terms or has_english_china_terms
+
+    def _fetch_google_news_rss(self, query: str, count: int = 10, time_range: str = "24h", selected_sources: set[str] | None = None) -> list[dict[str, object]]:
         """通过 Google News RSS 按 query 动态搜索新闻。中文 query 自动附加英文关键词。"""
-        import re
         from urllib.parse import quote_plus
 
         import feedparser
 
-        # 如果 query 包含中文，附加英文金融关键词以提升 Google News 命中率
-        has_chinese = bool(re.search(r"[\u4e00-\u9fff]", query))
-        search_query = f"{query} financial markets news" if has_chinese else query
+        # 中文场景优先使用中文检索源与原始 query，英文场景补充关键词提高命中率
+        has_chinese = self._is_chinese_scope(selected_sources or set(), query)
+        search_query = f"{query} financial markets news" if not has_chinese else query
+        template = GOOGLE_NEWS_CN_RSS_TEMPLATE if has_chinese else GOOGLE_NEWS_RSS_TEMPLATE
 
         gn_time = GOOGLE_NEWS_TIME_MAP.get(time_range, "1d")
-        url = GOOGLE_NEWS_RSS_TEMPLATE.format(query=quote_plus(search_query), time_range=gn_time)
+        url = template.format(query=quote_plus(search_query), time_range=gn_time)
         logger.info("Fetching Google News RSS for query: %s", search_query)
 
         try:

@@ -3,6 +3,24 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [v2.4] - 2026-06-16
+
+### Added — A股聚焦链路增强
+
+**🧭 市场范围自适应情报层**
+- `render_news_intelligence_markdown()` / `build_news_intelligence()` 新增 `market_scope` 与 `query` 链路参数，支持 A 股/全球资产映射自动切换。
+- 引入 `CATEGORY_ASSET_WATCHLIST_CHINA` 与 `ASSET_KEYWORDS_CN`，A 股聚焦时资产影响雷达改用更贴近 A 股的 watchlist。
+- 报表上下文与采集/分析流程统一透传 query，用于更准确判定 A 股场景，减少“选中文件仍展示全球信号”的误判。
+
+### Fixed — 报纸版面展示
+
+**📰 报纸布局两栏失衡问题**
+- `src/components/newspaper_view.py` 改为先标准化 `##+/###` 标题，再按 `##` 切片，避免部分输出只被识别为单节文本导致右栏空白。
+
+### Changed
+- 版本号升级：`v2.3` → `v2.4`
+- `app.py` 在新闻智能面板渲染时透传 `query`，确保 A 股聚焦下的信号图谱自动切到中文市场映射。
+
 ## [v2.3] - 2026-06-16
 
 ### Added — 无模型可用时的规则引擎兜底

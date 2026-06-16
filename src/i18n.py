@@ -94,6 +94,14 @@ I18N = {
     # Analysis Tab
     "collecting_news": {"en": "Collecting news...", "zh": "正在采集新闻…"},
     "no_news": {"en": "No news articles found. Try a different query.", "zh": "未找到新闻，请尝试其他关键词。"},
+    "mock_data_notice": {
+        "en": "⚠️ Mock items are detected in news sources. Results are for workflow validation only.",
+        "zh": "⚠️ 检测到 mock 示例数据。该结果仅用于流程验证，非真实市场样本。",
+    },
+    "low_sample_notice": {
+        "en": "⚠️ Only {n} article(s) were collected, so current output is directional only and confidence is limited.",
+        "zh": "⚠️ 仅采集到 {n} 条新闻，当前结论仅供方向参考，置信度有限，请等待更多样本。",
+    },
     "scraping_content": {"en": "Scraping full article content...", "zh": "正在抓取文章全文…"},
     "scraped_count": {
         "en": "📄 Scraped full content for {scraped}/{total} articles",

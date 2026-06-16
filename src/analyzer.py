@@ -15,10 +15,12 @@ from src.config import (
     GEMINI_MAX_OUTPUT_TOKENS,
     GEMINI_THINKING_BUDGET,
     LLM_PROVIDERS,
+    CHINA_FOCUS_SOURCES,
     OPENAI_COMPAT_MAX_TOKENS,
     PREVIOUS_REPORT_MAX_AGE_HOURS,
     PREVIOUS_REPORT_MAX_CHARS,
     REPORT_SECTORS,
+    SNAPSHOT_TICKERS_CHINA,
     SNAPSHOT_TICKERS,
     TIME_RANGE_PERIOD_MAP,
 )
@@ -108,10 +110,59 @@ class FinancialAnalyzer:
 
     # ──────────────────── 辅助方法 ────────────────────
 
-    def _build_news_context(self, news_items: list[dict], language: str = "en") -> str:
+    @staticmethod
+    def _query_has_chinese_finance_signal(query: str | None) -> bool:
+        if not query:
+            return False
+        text = query.lower()
+        keywords = [
+            "a股",
+            "a-share",
+            "a share",
+            "china",
+            "china a-share",
+            "沪深",
+            "上证",
+            "深证",
+            "中国",
+            "中国股市",
+            "财经",
+            "股",
+            "基金",
+            "债券",
+            "港股",
+            "港股通",
+        ]
+        return any(keyword in text for keyword in keywords)
+
+    @staticmethod
+    def _is_mock_item(item: dict[str, object]) -> bool:
+        return "mock" in str(item.get("source", "")).lower()
+
+    def _detect_market_scope(self, query: str | None, news_items: list[dict]) -> str:
+        if self._query_has_chinese_finance_signal(query):
+            return "china_a_share"
+        for item in news_items:
+            source = str(item.get("source", "")).strip()
+            if source in CHINA_FOCUS_SOURCES:
+                return "china_a_share"
+        return "global"
+
+    @staticmethod
+    def _snapshot_tickers_for_scope(scope: str) -> list[str]:
+        if scope == "china_a_share":
+            return list(SNAPSHOT_TICKERS_CHINA.values())
+        return list(SNAPSHOT_TICKERS.values())
+
+    def _build_news_context(
+        self, news_items: list[dict], language: str = "en", query: str | None = None
+    ) -> str:
         """构建新闻上下文，优先使用全文内容，并注入确定性新闻信号。"""
+        market_scope = self._detect_market_scope(query=query, news_items=news_items)
         parts = []
-        intelligence = render_news_intelligence_markdown(news_items, language=language)
+        intelligence = render_news_intelligence_markdown(
+            news_items, language=language, market_scope=market_scope
+        )
         if intelligence:
             parts.append(f"{intelligence}\n")
 
@@ -128,10 +179,17 @@ class FinancialAnalyzer:
         return "".join(parts)
 
     @staticmethod
-    def fetch_market_snapshot(time_range: str = "week") -> str:
+    def fetch_market_snapshot(time_range: str = "week", tickers: list[str] | None = None) -> str:
         """从 yfinance 批量拉取关键资产实时行情快照。"""
-        tickers_list = list(SNAPSHOT_TICKERS.values())
-        name_by_ticker = {v: k for k, v in SNAPSHOT_TICKERS.items()}
+        ticker_map = {**SNAPSHOT_TICKERS, **SNAPSHOT_TICKERS_CHINA}
+        if tickers is not None:
+            ticker_map = {name: code for name, code in ticker_map.items() if code in tickers}
+            if not ticker_map:
+                ticker_map = SNAPSHOT_TICKERS
+            tickers_list = tickers
+        else:
+            tickers_list = list(SNAPSHOT_TICKERS.values())
+        name_by_ticker = {v: k for k, v in ticker_map.items()}
         period = TIME_RANGE_PERIOD_MAP.get(time_range, "5d")
 
         try:
@@ -380,6 +438,7 @@ Keep it professional, data-driven, yet engaging."""
         news_items: list[dict],
         briefing_length: str,
         language: str,
+        market_scope: str = "global",
         sectors: list[str] | None = None,
         snapshot: str | None = None,
         previous_report: str | None = None,
@@ -399,6 +458,10 @@ Keep it professional, data-driven, yet engaging."""
         sentiment_index = round((bull_count - bear_count) / article_count, 2) if article_count else 0.0
 
         top_sector = sector_hits.most_common(1)[0][0] if sector_hits else "macro"
+        snapshot_label_zh = "3) A股快照（近5日）" if market_scope == "china_a_share" else "3) 市场快照（近5日）"
+        snapshot_label_en = "3) A-share Snapshot (5-day proxy)" if market_scope == "china_a_share" else "3) Market Snapshot (5-day proxy)"
+        is_mock_data = any(self._is_mock_item(item) for item in news_items)
+        low_sample = article_count < 3
 
         title_zh = "# 金融市场简报（规则模式）"
         title_en = "# Financial Briefing (Rule-based)"
@@ -413,33 +476,77 @@ Keep it professional, data-driven, yet engaging."""
             lines = [
                 title,
                 detail_note,
+            ]
+            if is_mock_data:
+                lines.extend(
+                    [
+                        "## ⚠️ 数据提示",
+                        "当前结果主要依赖兜底样本（含 mock 来源），仅用于演示流程，不代表真实市场观点。",
+                        "建议补充可抓取到的来源后再做交易性决策。",
+                    ]
+                )
+            if low_sample:
+                lines.extend(
+                    [
+                        "## 7) 样本有效性说明",
+                        "⚠️ 当前样本量较少（少于3条），结论仅做趋势框架参考，不应单独作为交易信号。"
+                        if article_count > 0
+                        else "⚠️ 本次未抓取到有效样本，当前输出为基于历史信息的保守提示。",
+                        "可观测变量较少时，先观察后续 2-3 条新闻是否同步，降低误判概率。",
+                    ]
+                )
+
+            lines.extend(
+                [
                 "## 1) 情绪与主题聚合",
                 f"- 文章样本数：{article_count}",
                 f"- 多头：{bull_count}，空头：{bear_count}，中性：{article_count - bull_count - bear_count}",
                 f"- 综合情绪指数：`(多头-空头)/样本数 = ({bull_count}-{bear_count})/{article_count} = {sentiment_index}`",
                 f"- 情绪标签：**{self._label_for_score(sentiment_index, 'zh')}**",
                 f"- 主题主导：**{top_sector}**",
-                "\n## 2) 关键新闻链条",
-            ]
+                    "\n## 2) 关键新闻链条",
+                ]
+            )
             for idx, item in enumerate(signals[:3], start=1):
                 lines.append(f"{idx}. [{item['source']}] {item['title']}（{item['emotion_label']}，评分{item['score']}）")
         else:
             lines = [
                 title,
                 detail_note,
+            ]
+            if is_mock_data:
+                lines.extend(
+                    [
+                        "## ⚠️ Data Quality Notice",
+                        "Current result is mainly driven by fallback/mock items and should be treated as a workflow demo, not investable output.",
+                        "Use only when real feed data is unavailable.",
+                    ]
+                )
+            if low_sample:
+                lines.extend(
+                    [
+                        "## 7) Sample Quality Note",
+                        "⚠️ Sample size is small (fewer than 3 items). This should be treated as directional context only.",
+                        "Avoid turning this into direct action signals until 2–3 follow-up items align.",
+                    ]
+                )
+
+            lines.extend(
+                [
                 "## 1) Sentiment and Theme Aggregation",
                 f"- Sample size: {article_count}",
                 f"- Bullish: {bull_count}, Bearish: {bear_count}, Neutral: {article_count - bull_count - bear_count}",
                 f"- Sentiment index: `(bullish - bearish)/count = ({bull_count}-{bear_count})/{article_count} = {sentiment_index}`",
                 f"- Sentiment label: **{self._label_for_score(sentiment_index, 'en')}**",
                 f"- Dominant theme: **{top_sector}**",
-                "\n## 2) Key News Chains",
-            ]
+                    "\n## 2) Key News Chains",
+                ]
+            )
             for idx, item in enumerate(signals[:3], start=1):
                 lines.append(f"{idx}. [{item['source']}] {item['title']} (score {item['score']}, {item['emotion_label']})")
 
         if language == "zh":
-            lines.extend(["", "## 3) 市场快照（近5日）"])
+            lines.extend(["", f"## {snapshot_label_zh}"])
             if movers_top:
                 for name, delta in movers_top:
                     direction = "上行" if delta >= 0 else "下行"
@@ -447,7 +554,7 @@ Keep it professional, data-driven, yet engaging."""
             else:
                 lines.append("- 快照暂不可用（后备模式已继续输出）")
         else:
-            lines.extend(["", "## 3) Market Snapshot (5-day proxy)"])
+            lines.extend(["", f"## {snapshot_label_en}"])
             if movers_top:
                 for name, delta in movers_top:
                     direction = "up" if delta >= 0 else "down"
@@ -475,7 +582,7 @@ Keep it professional, data-driven, yet engaging."""
             )
 
         if previous_report:
-            prev_excerpt = previous_report[: min(280, len(previous_report))]
+            prev_excerpt = self._summarize_previous_report(previous_report, max_chars=320)
             if language == "zh":
                 lines.extend(
                     [
@@ -820,6 +927,7 @@ Keep it professional, data-driven, yet engaging."""
         briefing_length: str = "medium",
         language: str = "en",
         sectors: list[str] | None = None,
+        query: str | None = None,
         previous_report: str | None = None,
         deep_analysis: bool = False,
         time_range: str = "week",
@@ -834,8 +942,10 @@ Keep it professional, data-driven, yet engaging."""
             logger.info("Previous report is too old or metadata invalid, skipping comparison.")
             previous_report = None
 
-        news_context = self._build_news_context(news_items, language=language)
-        snapshot = self.fetch_market_snapshot(time_range=time_range)
+        market_scope = self._detect_market_scope(query=query, news_items=news_items)
+        tickers = self._snapshot_tickers_for_scope(market_scope)
+        snapshot = self.fetch_market_snapshot(time_range=time_range, tickers=tickers)
+        news_context = self._build_news_context(news_items, language=language, query=query)
         input_text = self._build_input(
             news_context=news_context,
             briefing_length=briefing_length,
@@ -851,6 +961,7 @@ Keep it professional, data-driven, yet engaging."""
                 news_items=news_items,
                 briefing_length=briefing_length,
                 language=language,
+                market_scope=market_scope,
                 sectors=sectors,
                 snapshot=snapshot,
                 previous_report=previous_report,
@@ -863,6 +974,7 @@ Keep it professional, data-driven, yet engaging."""
                 news_items=news_items,
                 briefing_length=briefing_length,
                 language=language,
+                market_scope=market_scope,
                 sectors=sectors,
                 snapshot=snapshot,
                 previous_report=previous_report,
@@ -879,6 +991,7 @@ Keep it professional, data-driven, yet engaging."""
                 news_items=news_items,
                 briefing_length=briefing_length,
                 language=language,
+                market_scope=market_scope,
                 sectors=sectors,
                 snapshot=snapshot,
                 previous_report=previous_report,
@@ -912,6 +1025,7 @@ Keep it professional, data-driven, yet engaging."""
         briefing_length: str = "medium",
         language: str = "en",
         sectors: list[str] | None = None,
+        query: str | None = None,
         previous_report: str | None = None,
         deep_analysis: bool = False,
         on_status: object = None,
@@ -928,15 +1042,17 @@ Keep it professional, data-driven, yet engaging."""
             logger.info("Previous report is too old or metadata invalid, skipping comparison.")
             previous_report = None
 
+        market_scope = self._detect_market_scope(query=query, news_items=news_items)
+        tickers = self._snapshot_tickers_for_scope(market_scope)
         provider = self._effective_provider(self.provider, deep_analysis)
-        news_context = self._build_news_context(news_items, language=language)
+        news_context = self._build_news_context(news_items, language=language, query=query)
 
         if on_status:
             provider_key = provider
             provider_name = LLM_PROVIDERS.get(provider_key, {}).get("name", provider_key)
             on_status(f"📊 Analyzing with {provider_name}...")
 
-        snapshot = self.fetch_market_snapshot(time_range=time_range)
+        snapshot = self.fetch_market_snapshot(time_range=time_range, tickers=tickers)
         input_text = self._build_input(
             news_context=news_context,
             briefing_length=briefing_length,
@@ -955,6 +1071,7 @@ Keep it professional, data-driven, yet engaging."""
                     news_items=news_items,
                     briefing_length=briefing_length,
                     language=language,
+                    market_scope=market_scope,
                     sectors=sectors,
                     snapshot=snapshot,
                     previous_report=previous_report,
@@ -973,6 +1090,7 @@ Keep it professional, data-driven, yet engaging."""
                     news_items=news_items,
                     briefing_length=briefing_length,
                     language=language,
+                    market_scope=market_scope,
                     sectors=sectors,
                     snapshot=snapshot,
                     previous_report=previous_report,
@@ -995,6 +1113,7 @@ Keep it professional, data-driven, yet engaging."""
                     news_items=news_items,
                     briefing_length=briefing_length,
                     language=language,
+                    market_scope=market_scope,
                     sectors=sectors,
                     snapshot=snapshot,
                     previous_report=previous_report,

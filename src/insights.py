@@ -128,6 +128,47 @@ CATEGORY_ASSET_WATCHLIST = {
     "other": ["S&P 500 / SPY"],
 }
 
+CATEGORY_ASSET_WATCHLIST_CHINA = {
+    "macro": ["上证综合 / 000001.SS", "国债国债 / 10Y (10年期国债)", "人民币汇率 / FXCNH"],
+    "stocks": ["上证指数 / 000001.SS", "沪深300 / 000300.SS", "创业板指 / 399006.SZ", "上证50 / 000016.SS"],
+    "commodities": ["贵金属 / 黄金", "有色金属 / 铜", "原油 / 布伦特"],
+    "crypto": ["比特币 / BTC-USD"],
+    "forex": ["人民币 / USD/CNH", "人民币离岸 / CNH"],
+    "bonds": ["国债 / 10Y (10年期国债)", "政策利率 / 货币", "信用利差 / 信用债"],
+    "other": ["上证指数 / 000001.SS"],
+}
+
+ASSET_KEYWORDS_CN = {
+    "上证综合 / 000001.SS": ["上证", "上证指数", "上证综指", "000001"],
+    "国债国债 / 10Y (10年期国债)": ["国债", "10年", "10y", "债息", "债券收益率"],
+    "人民币汇率 / FXCNH": ["人民币", "cnh", "美元人民币", "usd/cnh", "汇率"],
+    "上证指数 / 000001.SS": ["上证指数", "上证", "上证综指", "000001.ss"],
+    "沪深300 / 000300.SS": ["沪深300", "000300"],
+    "创业板指 / 399006.SZ": ["创业板", "399006", "创业板指"],
+    "上证50 / 000016.SS": ["上证50", "上证 50", "000016"],
+    "贵金属 / 黄金": ["黄金", "gold", "贵金属", "金价"],
+    "有色金属 / 铜": ["铜", "copper", "有色"],
+    "原油 / 布伦特": ["原油", "石油", "brent", "油价"],
+    "比特币 / BTC-USD": ["比特币", "bitcoin", "btc", "crypto", "加密"],
+    "人民币 / USD/CNH": ["人民币", "人民币兑美元", "美元人民币", "usd/cnh", "cnh"],
+    "人民币离岸 / CNH": ["离岸人民币", "cnh", "人民币"],
+    "国债 / 10Y (10年期国债)": ["债券", "国债", "10y", "十年期"],
+    "政策利率 / 货币": ["利率", "政策利率", "降准", "降息", "加息"],
+    "信用利差 / 信用债": ["信用债", "信用利差", "cds", "债券风险"],
+}
+
+CHINA_SCOPE_KEYWORDS = [
+    "a股",
+    "沪深",
+    "上证",
+    "深证",
+    "创业板",
+    "中国",
+    "china",
+    "a-share",
+    "a share",
+]
+
 ASSET_KEYWORDS = {
     "US Treasuries / TLT": ["treasury", "yield", "bond", "debt", "国债", "收益率", "债券"],
     "10Y Yield / ^TNX": ["10-year", "10 year", "10y", "yield", "收益率"],
@@ -450,16 +491,30 @@ def urgency_score(text: str) -> int:
     return sum(1 for keyword in URGENCY_KEYWORDS if keyword.lower() in text_lower)
 
 
-def infer_asset_impacts(text: str, category: str, max_assets: int = 5) -> list[str]:
+def _is_china_scope(text: str) -> bool:
+    """判断文本是否偏向 A 股/中国市场。"""
+    normalized = (text or "").lower()
+    return any(keyword.lower() in normalized for keyword in CHINA_SCOPE_KEYWORDS)
+
+
+def infer_asset_impacts(
+    text: str,
+    category: str,
+    max_assets: int = 5,
+    asset_keyword_map: dict[str, list[str]] | None = None,
+    category_watchlist: dict[str, list[str]] | None = None,
+) -> list[str]:
     """Infer a compact asset watchlist affected by a news item."""
     text_lower = text.lower()
     impacts: list[str] = []
+    keyword_map = asset_keyword_map or ASSET_KEYWORDS
+    watchlist_map = category_watchlist or CATEGORY_ASSET_WATCHLIST
 
-    for asset, keywords in ASSET_KEYWORDS.items():
+    for asset, keywords in keyword_map.items():
         if any(keyword.lower() in text_lower for keyword in keywords):
             impacts.append(asset)
 
-    for asset in CATEGORY_ASSET_WATCHLIST.get(category, CATEGORY_ASSET_WATCHLIST["other"]):
+    for asset in watchlist_map.get(category, watchlist_map.get("other", [])):
         if asset not in impacts:
             impacts.append(asset)
 
@@ -475,8 +530,20 @@ def infer_time_horizon(text: str) -> str:
     return "near_term"
 
 
-def build_news_intelligence(news_items: list[dict], max_signals: int = 8) -> NewsIntelligence:
+def build_news_intelligence(
+    news_items: list[dict],
+    max_signals: int = 8,
+    market_scope: str = "auto",
+    query: str | None = None,
+) -> NewsIntelligence:
     """Build deterministic intelligence signals from collected news items."""
+    item_text = " ".join(str(item.get("title", "")) for item in news_items)
+    scope = market_scope
+    if scope == "auto":
+        scope = "china_a_share" if _is_china_scope(f"{query or ''} {item_text}") else "global"
+    asset_map = ASSET_KEYWORDS_CN if scope == "china_a_share" else ASSET_KEYWORDS
+    watchlist_map = CATEGORY_ASSET_WATCHLIST_CHINA if scope == "china_a_share" else CATEGORY_ASSET_WATCHLIST
+
     signals: list[NewsSignal] = []
     for item in news_items:
         title = str(item.get("title") or "").strip()
@@ -488,7 +555,13 @@ def build_news_intelligence(news_items: list[dict], max_signals: int = 8) -> New
         category = classify_category(text)
         tone = classify_tone(text)
         urgency = urgency_score(text)
-        asset_impacts = infer_asset_impacts(text, category)
+        asset_impacts = infer_asset_impacts(
+            text=text,
+            category=category,
+            max_assets=5,
+            asset_keyword_map=asset_map,
+            category_watchlist=watchlist_map,
+        )
         time_horizon = infer_time_horizon(text)
         reason_bits = []
         if category != "other":
@@ -599,9 +672,20 @@ def _decision_checklist_lines(intelligence: NewsIntelligence, language: str) -> 
     ]
 
 
-def render_news_intelligence_markdown(news_items: list[dict], language: str = "en", max_signals: int = 8) -> str:
+def render_news_intelligence_markdown(
+    news_items: list[dict],
+    language: str = "en",
+    max_signals: int = 8,
+    market_scope: str = "auto",
+    query: str | None = None,
+) -> str:
     """Render a concise market-intelligence dashboard in Markdown."""
-    intelligence = build_news_intelligence(news_items, max_signals=max_signals)
+    intelligence = build_news_intelligence(
+        news_items,
+        max_signals=max_signals,
+        market_scope=market_scope,
+        query=query,
+    )
     labels = CATEGORY_LABELS.get(language, CATEGORY_LABELS["en"])
     tone_labels = TONE_LABELS.get(language, TONE_LABELS["en"])
     regime_labels = MARKET_REGIME_LABELS.get(language, MARKET_REGIME_LABELS["en"])

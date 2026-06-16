@@ -146,8 +146,9 @@ def render_newspaper(report_md: str, theme_name: str = "classic") -> str:
     language = st.session_state.get("language", "en")
     theme = NEWSPAPER_THEMES.get(theme_name, NEWSPAPER_THEMES["classic"])
 
-    # 按 ## 分割为 sections（不匹配 ###）
-    parts = re.split(r"^##(?!#)\s+", report_md, flags=re.MULTILINE)
+    # 报告中通常存在 ## 与 ###，统一按 >=2 级标题拆分，避免只输出单列正文。
+    normalized_report = re.sub(r"^##+\s+", "## ", report_md, flags=re.MULTILINE)
+    parts = re.split(r"^##(?!#)\s+", normalized_report, flags=re.MULTILINE)
 
     headline = ""
     subheadline = ""

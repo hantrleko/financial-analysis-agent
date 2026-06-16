@@ -392,9 +392,16 @@ def _sentiment_tag(title: str) -> str:
     return t("sentiment_neutral_tag")
 
 
-def _render_news_intelligence_panel(news_items: list) -> None:
+def _render_news_intelligence_panel(
+    news_items: list, query: str | None = None, market_scope: str = "auto"
+) -> None:
     """Render deterministic news signal map for collected articles."""
-    intelligence = render_news_intelligence_markdown(news_items, language=language)
+    intelligence = render_news_intelligence_markdown(
+        news_items,
+        language=language,
+        query=query,
+        market_scope=market_scope,
+    )
     if intelligence:
         st.markdown(intelligence)
         st.divider()
@@ -433,9 +440,17 @@ def _render_news_list(news_items: list, show_full_content: bool = False) -> None
             st.divider()
 
 
-def display_result(news_items, report, audio_path=None, pdf_path=None, use_newspaper=False, newspaper_theme="classic"):
+def display_result(
+    news_items,
+    report,
+    audio_path=None,
+    pdf_path=None,
+    use_newspaper=False,
+    newspaper_theme="classic",
+    query: str | None = None,
+):
     with st.expander(t("collected_news", count=len(news_items)), expanded=False):
-        _render_news_intelligence_panel(news_items)
+        _render_news_intelligence_panel(news_items, query=query, market_scope="auto")
         _render_news_list(news_items)
 
     st.subheader(t("analysis_report"))
@@ -512,6 +527,12 @@ with tab_analysis:
                 step_pills.empty()
                 st.warning(t("no_news"))
             else:
+                is_mock = any("mock" in str(item.get("source", "")).lower() for item in news_items)
+                if is_mock:
+                    st.warning(t("mock_data_notice"))
+                if len(news_items) < 3:
+                    st.warning(t("low_sample_notice", n=len(news_items)))
+
                 render_progress(1, progress_bar, step_label)
                 step_pills.markdown(render_step_pills(1), unsafe_allow_html=True)
 
@@ -521,7 +542,7 @@ with tab_analysis:
                     st.caption(t("scraped_count", scraped=scraped, total=len(news_items)))
 
                 with st.expander(t("collected_news", count=len(news_items)), expanded=False):
-                    _render_news_intelligence_panel(news_items)
+                    _render_news_intelligence_panel(news_items, query=query, market_scope="auto")
                     _render_news_list(news_items, show_full_content=True)
 
                 previous_report = None
@@ -552,6 +573,7 @@ with tab_analysis:
                     news_items,
                     briefing_length=briefing_length,
                     language=language,
+                    query=query,
                     sectors=sector_values,
                     previous_report=previous_report,
                     deep_analysis=deep_analysis,
@@ -651,6 +673,7 @@ with tab_analysis:
                     "run_id": run_id,
                     "newspaper_mode": newspaper_mode and deep_analysis,
                     "newspaper_theme": newspaper_theme,
+                    "query": query,
                 }
 
         except Exception as e:
@@ -666,6 +689,7 @@ with tab_analysis:
             result.get("pdf_path"),
             use_newspaper=result.get("newspaper_mode", False),
             newspaper_theme=result.get("newspaper_theme", "classic"),
+            query=result.get("query"),
         )
 
 with tab_sentiment:
