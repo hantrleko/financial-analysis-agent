@@ -38,10 +38,12 @@ class NewsCollector:
         """
         获取新闻。
         ai_search=True: 先用 Gemini Search Grounding 联网搜索，再用 RSS 补充
-        ai_search=False: 纯 RSS + Google News 动态搜索（默认）
+        ai_search=False: 纯 RSS，若未限制来源（或来源中包含 Google News）则补充 Google News RSS
         """
         rss_items = self._fetch_rss(count=count, time_range=time_range, sources=sources)
-        google_items = self._fetch_google_news_rss(query, count, time_range)
+        selected_sources = set(sources or [])
+        has_google_filter = any("google news" in s.strip().lower() for s in selected_sources)
+        google_items = self._fetch_google_news_rss(query, count, time_range) if has_google_filter or not selected_sources else []
         base_items = self._dedup(google_items + rss_items, count)
 
         if not ai_search:

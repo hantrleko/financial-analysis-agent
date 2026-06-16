@@ -332,6 +332,12 @@ Keep it professional, data-driven, yet engaging."""
         suffix = " (Fallback Engine)" if fallback else " (Active)"
         return f"## Execution Engine: {engine_name}{suffix}\n\n"
 
+    @staticmethod
+    def _effective_provider(provider: str, deep_analysis: bool) -> str:
+        if deep_analysis and provider != "rule_based":
+            return DEEP_LLM_PROVIDER
+        return provider
+
     def _analyze_news_signal(self, news_items: list[dict], language: str) -> tuple[list[dict], Counter]:
         article_scores = []
         sector_hits = Counter()
@@ -573,7 +579,7 @@ Keep it professional, data-driven, yet engaging."""
         路由 LLM 调用。
         Gemini 优先，若因地区限制失败则自动回退到智谱 GLM。
         """
-        provider = DEEP_LLM_PROVIDER if deep_analysis else self.provider
+        provider = self._effective_provider(self.provider, deep_analysis)
 
         if provider.startswith("gemini"):
             try:
@@ -839,7 +845,19 @@ Keep it professional, data-driven, yet engaging."""
             previous_report=previous_report,
         )
 
-        provider = DEEP_LLM_PROVIDER if deep_analysis else self.provider
+        provider = self._effective_provider(self.provider, deep_analysis)
+        if provider == "rule_based":
+            rule_report = self._build_rule_based_report(
+                news_items=news_items,
+                briefing_length=briefing_length,
+                language=language,
+                sectors=sectors,
+                snapshot=snapshot,
+                previous_report=previous_report,
+                time_range=time_range,
+            )
+            return self._engine_markdown_header("rule_based", language=language, fallback=False) + rule_report
+
         if not self._provider_key_available(provider):
             rule_report = self._build_rule_based_report(
                 news_items=news_items,
@@ -873,7 +891,7 @@ Keep it professional, data-driven, yet engaging."""
         流式路由 LLM 调用。
         Gemini 优先，若因地区限制失败则自动回退到智谱 GLM。
         """
-        provider = DEEP_LLM_PROVIDER if deep_analysis else self.provider
+        provider = self._effective_provider(self.provider, deep_analysis)
 
         if provider.startswith("gemini"):
             try:
@@ -910,10 +928,11 @@ Keep it professional, data-driven, yet engaging."""
             logger.info("Previous report is too old or metadata invalid, skipping comparison.")
             previous_report = None
 
+        provider = self._effective_provider(self.provider, deep_analysis)
         news_context = self._build_news_context(news_items, language=language)
 
         if on_status:
-            provider_key = DEEP_LLM_PROVIDER if deep_analysis else self.provider
+            provider_key = provider
             provider_name = LLM_PROVIDERS.get(provider_key, {}).get("name", provider_key)
             on_status(f"📊 Analyzing with {provider_name}...")
 
@@ -927,7 +946,24 @@ Keep it professional, data-driven, yet engaging."""
             previous_report=previous_report,
         )
 
-        provider = DEEP_LLM_PROVIDER if deep_analysis else self.provider
+        if provider == "rule_based":
+            if on_status:
+                on_status("📊 Analyzing with Rule-based engine..." if language == "en" else "📊 使用规则引擎分析中...")
+            yield self._engine_markdown_header("rule_based", language=language, fallback=False)
+            for chunk in self._chunk_text(
+                self._build_rule_based_report(
+                    news_items=news_items,
+                    briefing_length=briefing_length,
+                    language=language,
+                    sectors=sectors,
+                    snapshot=snapshot,
+                    previous_report=previous_report,
+                    time_range=time_range,
+                )
+            ):
+                yield chunk
+            return
+
         if not self._provider_key_available(provider):
             if on_status:
                 on_status("📊 Analyzing with Rule-based engine..." if language == "en" else "📊 使用规则引擎分析中...")

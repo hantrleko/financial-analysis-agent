@@ -116,7 +116,7 @@ PRESETS = {
         "generate_audio": True,
         "generate_pdf": True,
         "query": "A\u80a1 \u6caa\u6df1 \u5e02\u573a\u52a8\u6001" if language == "zh" else "China A-share market trends",
-        "sources": ["Sina Finance", "Cls.cn", "Eastmoney", "Bloomberg", "Reuters"],
+        "sources": ["Sina Finance", "Cls.cn", "Eastmoney"],
     },
     t("preset_custom"): None,
 }
