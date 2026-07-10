@@ -15,6 +15,7 @@ from src.components.history_view import render_history_tab
 from src.components.newspaper_view import render_newspaper
 from src.components.overview_dashboard import render_overview_tab
 from src.components.sentiment_dashboard import render_sentiment_tab
+from src.components.watchlist_view import render_watchlist_tab
 from src.config import (
     AVAILABLE_SOURCES,
     DEFAULT_LLM_PROVIDER,
@@ -484,12 +485,13 @@ def display_result(
             )
 
 
-tab_overview, tab_analysis, tab_sentiment, tab_charts, tab_history = st.tabs(
+tab_overview, tab_analysis, tab_sentiment, tab_charts, tab_watchlist, tab_history = st.tabs(
     [
         t("tab_overview"),
         t("tab_analysis"),
         t("tab_sentiment"),
         t("tab_charts"),
+        t("tab_watchlist"),
         t("tab_history"),
     ]
 )
@@ -701,6 +703,12 @@ with tab_sentiment:
 with tab_charts:
     try:
         render_charts_tab()
+    except Exception as e:
+        st.error(t("error_occurred", e=e))
+
+with tab_watchlist:
+    try:
+        render_watchlist_tab(BASE_DIR)
     except Exception as e:
         st.error(t("error_occurred", e=e))
 

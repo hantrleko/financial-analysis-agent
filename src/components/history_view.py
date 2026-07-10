@@ -47,6 +47,23 @@ def _export_runs_as_zip(hm: HistoryManager, run_ids: list[str]) -> bytes:
     return buf.getvalue()
 
 
+def _export_runs_as_csv(runs: list[dict]) -> bytes:
+    """将历史记录的元数据导出为 CSV（便于在 Excel 中做统计分析）。"""
+    import csv
+
+    buf = io.StringIO()
+    fieldnames = ["run_id", "timestamp", "query", "sources", "num_articles", "time_range", "briefing_length"]
+    writer = csv.DictWriter(buf, fieldnames=fieldnames, extrasaction="ignore")
+    writer.writeheader()
+    for r in runs:
+        row = dict(r)
+        srcs = row.get("sources", [])
+        if isinstance(srcs, list):
+            row["sources"] = "; ".join(str(s) for s in srcs)
+        writer.writerow(row)
+    return buf.getvalue().encode("utf-8-sig")  # BOM for Excel CJK compatibility
+
+
 def _render_diff(report_a: str, report_b: str, label_a: str, label_b: str):
     """渲染两份报告的对比视图。"""
     lines_a = report_a.splitlines()
@@ -113,7 +130,7 @@ def render_history_tab(history_dir: str):
             return
 
         # -- 工具栏：导出 & 对比 --
-        tool_col1, tool_col2, tool_col3 = st.columns([1, 1, 2])
+        tool_col1, tool_col2, tool_col3, tool_col4 = st.columns([1, 1, 1, 1])
         with tool_col1:
             all_run_ids = [r.get("run_id", "") for r in runs]
             if st.button(t("export_zip"), key="btn_export_zip", use_container_width=True):
@@ -127,6 +144,16 @@ def render_history_tab(history_dir: str):
                     key="dl_export_zip",
                 )
         with tool_col2:
+            csv_data = _export_runs_as_csv(runs)
+            st.download_button(
+                label=t("export_csv"),
+                data=csv_data,
+                file_name="history_metadata.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key="dl_export_csv",
+            )
+        with tool_col3:
             show_compare = st.checkbox(t("compare_reports"), key="show_compare")
 
         # -- 报告对比 --

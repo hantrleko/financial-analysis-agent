@@ -3,6 +3,36 @@
 All notable changes to this project will be documented in this file.
 
 ---
+## [v2.5] - 2026-07-10
+
+### Added — 技术分析与自选清单能力升级
+
+**📈 技术指标引擎 (`src/indicators.py`)**
+- 新增纯函数式技术指标模块：SMA / EMA / RSI / MACD / 布林带 / ATR / 随机指标 (KD)。
+- `analyze_indicators()` 汇总多指标为归一化技术面综合分 [-1, 1] 与可读信号列表。
+- 完整单元测试覆盖（15 个用例），边界与数据不足场景做防御性处理。
+
+**⭐ 自选清单 Tab (`src/watchlist.py` + `components/watchlist_view.py`)**
+- 全新「自选」Tab：本地 JSON 持久化自定义标的，支持增删。
+- 批量拉取实时报价、涨跌幅、RSI 与技术信号摘要，指标卡片 + 明细表展示。
+
+**📊 技术分析图表模式**
+- 图表 Tab 新增「技术分析」模式：K 线 + 布林带 + RSI + MACD 多面板联动图。
+- `create_technical_chart()` 支持按需开关各指标面板，附指标摘要表与综合分。
+
+**🧭 情绪评分融合 RSI**
+- `AssetSignal` 新增 14 日 RSI 计算；评分模型加入超买/超卖均值回归微调（向后兼容）。
+- 板块明细表新增 RSI 列，信号依据文本包含 RSI 读数。
+
+**📑 历史记录 CSV 导出**
+- 历史 Tab 新增「导出 CSV」，元数据以 Excel 友好格式（UTF-8 BOM）导出用于统计分析。
+
+### Changed
+- 版本号升级：`v2.4` → `v2.5`
+- 新增约 30 个中英双语 i18n 键（技术分析、自选清单、CSV 导出）。
+- 测试总数：59 → 90。
+
+---
 ## [v2.4] - 2026-06-16
 
 ### Added — A股聚焦链路增强

@@ -11,10 +11,13 @@ from datetime import datetime, timedelta
 import streamlit as st
 
 from src.i18n import t
+from src.indicators import analyze_indicators
 from src.visualizer import (
     ASSET_GROUPS,
     create_asset_dashboard,
     create_correlation_matrix,
+    create_technical_chart,
+    fetch_ohlcv_data,
 )
 
 
@@ -42,6 +45,11 @@ def _cached_correlation_matrix(
     period: str = "3mo",
 ):
     return create_correlation_matrix(list(tickers_tuple), list(names_tuple), period=period)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_ohlcv(ticker: str, period: str):
+    return fetch_ohlcv_data(ticker, period=period)
 
 
 CHART_PERIOD_OPTIONS_KEYS = [
@@ -78,7 +86,11 @@ def render_charts_tab() -> None:
         )
         chart_period = CHART_PERIOD_VALUES[period_labels.index(chart_period_label)]
     with c3:
-        _type_options = {t("chart_line"): "line", t("chart_candlestick"): "candlestick"}
+        _type_options = {
+            t("chart_line"): "line",
+            t("chart_candlestick"): "candlestick",
+            t("chart_technical"): "technical",
+        }
         _type_label = st.selectbox(
             t("chart_type"),
             options=list(_type_options.keys()),
@@ -135,6 +147,11 @@ def render_charts_tab() -> None:
         st.info(t("click_refresh_charts"))
         return
 
+    # ---- Technical analysis mode: single-asset multi-panel chart ----
+    if chart_type == "technical":
+        _render_technical_panel(chart_groups, chart_period)
+        return
+
     if chart_groups:
         with st.spinner(t("loading_market")):
             figures = _cached_asset_dashboard(
@@ -168,3 +185,73 @@ def render_charts_tab() -> None:
                 st.plotly_chart(corr_fig, use_container_width=True)
     else:
         st.info(t("select_group"))
+
+
+def _render_technical_panel(chart_groups: list[str], chart_period: str) -> None:
+    """渲染单资产多面板技术分析视图。"""
+    st.markdown(f"### {t('tech_indicators')}")
+
+    # Build asset options from selected groups (fall back to all groups)
+    options: dict[str, str] = {}
+    groups_to_use = chart_groups or list(ASSET_GROUPS.keys())
+    for gn in groups_to_use:
+        for a in ASSET_GROUPS.get(gn, []):
+            options[f"{a['name']} ({a['ticker']})"] = a["ticker"]
+
+    if not options:
+        st.info(t("select_group"))
+        return
+
+    col_a, col_b, col_c, col_d = st.columns([3, 1, 1, 1])
+    with col_a:
+        asset_label = st.selectbox(t("tech_pick_asset"), options=list(options.keys()), key="tech_asset")
+    with col_b:
+        show_bb = st.checkbox(t("tech_show_bollinger"), value=True, key="tech_bb")
+    with col_c:
+        show_rsi = st.checkbox(t("tech_show_rsi"), value=True, key="tech_rsi")
+    with col_d:
+        show_macd = st.checkbox(t("tech_show_macd"), value=True, key="tech_macd")
+
+    ticker = options[asset_label]
+    # Use a longer period for meaningful indicators
+    tech_period = "6mo" if chart_period in ("5d", "1mo", "3mo") else chart_period
+
+    with st.spinner(t("loading_market")):
+        ohlcv = _cached_ohlcv(ticker, tech_period)
+
+    if ohlcv is None or ohlcv.empty:
+        st.warning(t("watchlist_invalid", ticker=ticker))
+        return
+
+    fig = create_technical_chart(
+        ohlcv,
+        title=asset_label,
+        show_bollinger=show_bb,
+        show_rsi=show_rsi,
+        show_macd=show_macd,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Indicator summary table + technical score
+    snap = analyze_indicators(ohlcv)
+    st.markdown(f"#### {t('tech_summary')}")
+    score_cls = "🟢" if snap.tech_score >= 0.2 else "🔴" if snap.tech_score <= -0.2 else "⚪"
+    st.metric(t("tech_score_label"), f"{score_cls} {snap.tech_score:+.2f}")
+
+    rows = []
+
+    def _fmt(v, suffix=""):
+        return f"{v:.2f}{suffix}" if v is not None else "—"
+
+    rows.append({t("watchlist_col_ticker"): "RSI(14)", t("tech_signal_col"): _fmt(snap.rsi)})
+    rows.append({t("watchlist_col_ticker"): "MACD Hist", t("tech_signal_col"): _fmt(snap.macd_hist)})
+    rows.append({t("watchlist_col_ticker"): "Bollinger %B", t("tech_signal_col"): _fmt(snap.bb_pctb)})
+    rows.append({t("watchlist_col_ticker"): "Stochastic %K", t("tech_signal_col"): _fmt(snap.stoch_k)})
+    rows.append({t("watchlist_col_ticker"): "ATR %", t("tech_signal_col"): _fmt(snap.atr_pct, "%")})
+    rows.append({t("watchlist_col_ticker"): "SMA20", t("tech_signal_col"): _fmt(snap.sma20)})
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+    if snap.signals:
+        st.markdown("  ".join(f"`{s}`" for s in snap.signals))
+    else:
+        st.caption(t("tech_no_signal"))
