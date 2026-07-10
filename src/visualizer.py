@@ -6,6 +6,11 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import yfinance as yf
+from plotly.subplots import make_subplots
+
+from src.indicators import bollinger_bands
+from src.indicators import macd as macd_calc
+from src.indicators import rsi as rsi_calc
 
 logger = logging.getLogger(__name__)
 
@@ -234,6 +239,140 @@ def create_candlestick_chart(
         ),
         margin=dict(l=60, r=60, t=60, b=30),
     )
+    return fig
+
+
+def create_technical_chart(
+    ohlcv: pd.DataFrame,
+    title: str = "Technical Analysis",
+    show_bollinger: bool = True,
+    show_rsi: bool = True,
+    show_macd: bool = True,
+) -> go.Figure:
+    """
+    多面板技术分析图：K 线 + 布林带 + 成交量 + RSI + MACD。
+
+    自动根据所选指标决定子图行数，任何一个面板缺数据时优雅降级。
+    """
+    if ohlcv is None or ohlcv.empty or "Close" not in ohlcv.columns:
+        fig = go.Figure()
+        fig.update_layout(title="暂无数据 / No data", template="plotly_dark", height=400)
+        return fig
+
+    close = ohlcv["Close"].astype(float)
+
+    # 决定行布局：主图(含量) 固定；RSI / MACD 可选
+    rows = 1
+    row_heights = [0.6]
+    rsi_row = macd_row = None
+    if show_rsi:
+        rows += 1
+        rsi_row = rows
+        row_heights.append(0.2)
+    if show_macd:
+        rows += 1
+        macd_row = rows
+        row_heights.append(0.2)
+
+    fig = make_subplots(
+        rows=rows,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.04,
+        row_heights=row_heights,
+    )
+
+    # --- 主图：K线或收盘线 ---
+    if {"Open", "High", "Low"}.issubset(ohlcv.columns):
+        fig.add_trace(
+            go.Candlestick(
+                x=ohlcv.index,
+                open=ohlcv["Open"],
+                high=ohlcv["High"],
+                low=ohlcv["Low"],
+                close=ohlcv["Close"],
+                increasing_line_color="#22c55e",
+                decreasing_line_color="#ef4444",
+                name="Price",
+            ),
+            row=1,
+            col=1,
+        )
+    else:
+        fig.add_trace(
+            go.Scatter(x=close.index, y=close.values, mode="lines", name="Close", line=dict(color="#60a5fa")),
+            row=1,
+            col=1,
+        )
+
+    # 布林带叠加
+    if show_bollinger and len(close) >= 5:
+        bb = bollinger_bands(close)
+        fig.add_trace(
+            go.Scatter(
+                x=bb.index, y=bb["upper"], mode="lines", name="BB Upper",
+                line=dict(color="rgba(148,163,184,0.5)", width=1),
+            ),
+            row=1, col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=bb.index, y=bb["lower"], mode="lines", name="BB Lower",
+                line=dict(color="rgba(148,163,184,0.5)", width=1),
+                fill="tonexty", fillcolor="rgba(96,165,250,0.08)",
+            ),
+            row=1, col=1,
+        )
+        fig.add_trace(
+            go.Scatter(
+                x=bb.index, y=bb["mid"], mode="lines", name="BB Mid (MA20)",
+                line=dict(color="#f59e0b", width=1, dash="dot"),
+            ),
+            row=1, col=1,
+        )
+
+    # --- RSI 面板 ---
+    if rsi_row:
+        rsi_series = rsi_calc(close)
+        fig.add_trace(
+            go.Scatter(x=rsi_series.index, y=rsi_series.values, mode="lines",
+                       name="RSI(14)", line=dict(color="#a78bfa", width=1.5)),
+            row=rsi_row, col=1,
+        )
+        fig.add_hline(y=70, line=dict(color="#ef4444", width=1, dash="dash"), row=rsi_row, col=1)
+        fig.add_hline(y=30, line=dict(color="#22c55e", width=1, dash="dash"), row=rsi_row, col=1)
+        fig.update_yaxes(title_text="RSI", range=[0, 100], row=rsi_row, col=1)
+
+    # --- MACD 面板 ---
+    if macd_row:
+        m = macd_calc(close)
+        colors = ["#22c55e" if v >= 0 else "#ef4444" for v in m["hist"].fillna(0)]
+        fig.add_trace(
+            go.Bar(x=m.index, y=m["hist"], name="MACD Hist", marker_color=colors, opacity=0.6),
+            row=macd_row, col=1,
+        )
+        fig.add_trace(
+            go.Scatter(x=m.index, y=m["macd"], mode="lines", name="MACD",
+                       line=dict(color="#60a5fa", width=1.5)),
+            row=macd_row, col=1,
+        )
+        fig.add_trace(
+            go.Scatter(x=m.index, y=m["signal"], mode="lines", name="Signal",
+                       line=dict(color="#f59e0b", width=1.5)),
+            row=macd_row, col=1,
+        )
+        fig.update_yaxes(title_text="MACD", row=macd_row, col=1)
+
+    fig.update_layout(
+        title=title,
+        template="plotly_dark",
+        height=300 + rows * 130,
+        showlegend=True,
+        xaxis_rangeslider_visible=False,
+        margin=dict(l=60, r=30, t=60, b=30),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+    )
+    fig.update_yaxes(title_text="Price", row=1, col=1)
     return fig
 
 

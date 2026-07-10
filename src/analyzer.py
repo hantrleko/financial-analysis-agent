@@ -10,18 +10,18 @@ from datetime import datetime, timezone
 import yfinance as yf
 
 from src.config import (
+    CHINA_FOCUS_SOURCES,
     DEEP_LLM_PROVIDER,
     DEFAULT_LLM_PROVIDER,
     GEMINI_MAX_OUTPUT_TOKENS,
     GEMINI_THINKING_BUDGET,
     LLM_PROVIDERS,
-    CHINA_FOCUS_SOURCES,
     OPENAI_COMPAT_MAX_TOKENS,
     PREVIOUS_REPORT_MAX_AGE_HOURS,
     PREVIOUS_REPORT_MAX_CHARS,
     REPORT_SECTORS,
-    SNAPSHOT_TICKERS_CHINA,
     SNAPSHOT_TICKERS,
+    SNAPSHOT_TICKERS_CHINA,
     TIME_RANGE_PERIOD_MAP,
 )
 from src.insights import render_news_intelligence_markdown

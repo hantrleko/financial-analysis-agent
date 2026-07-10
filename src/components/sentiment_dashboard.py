@@ -313,6 +313,7 @@ def render_sentiment_tab() -> None:
                             "5D %": f"{a.change_5d_pct:+.1f}%",
                             "20D %": f"{a.change_20d_pct:+.1f}%",
                             t("col_ma20"): t("col_above") if a.above_ma20 else t("col_below"),
+                            t("col_rsi"): f"{a.rsi:.0f}" if a.rsi is not None else "—",
                             t("col_vol_ratio"): f"{a.volume_ratio:.1f}x",
                             t("col_score"): f"{a.score:+.2f}",
                             t("col_reason"): a.reason,

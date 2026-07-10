@@ -71,6 +71,47 @@ def test_compute_score_vix_inverted():
     assert score < 0, f"VIX rising should produce negative score, got {score}"
 
 
+def test_rsi_overbought_lowers_score():
+    base = AssetSignal(
+        name="T", ticker="T", sector="equity", group="G",
+        change_1d_pct=1.0, change_5d_pct=2.0, change_20d_pct=3.0, above_ma20=True,
+    )
+    without = MarketSentimentAnalyzer._compute_score(base)
+    base.rsi = 85.0
+    with_rsi = MarketSentimentAnalyzer._compute_score(base)
+    assert with_rsi < without
+
+
+def test_rsi_oversold_raises_score():
+    base = AssetSignal(
+        name="T", ticker="T", sector="equity", group="G",
+        change_1d_pct=-1.0, change_5d_pct=-2.0, change_20d_pct=-3.0, above_ma20=False,
+    )
+    without = MarketSentimentAnalyzer._compute_score(base)
+    base.rsi = 15.0
+    with_rsi = MarketSentimentAnalyzer._compute_score(base)
+    assert with_rsi > without
+
+
+def test_rsi_none_no_change():
+    sig = AssetSignal(
+        name="T", ticker="T", sector="equity", group="G",
+        change_1d_pct=1.0, change_5d_pct=2.0, change_20d_pct=3.0, above_ma20=True, rsi=None,
+    )
+    # Should not raise and should stay in bounds
+    score = MarketSentimentAnalyzer._compute_score(sig)
+    assert -1.0 <= score <= 1.0
+
+
+def test_build_reason_includes_rsi():
+    sig = AssetSignal(
+        name="SPY", ticker="SPY", sector="equity", group="Indices",
+        change_1d_pct=1.5, change_5d_pct=3.0, above_ma20=True, rsi=75.0,
+    )
+    reason = MarketSentimentAnalyzer._build_reason(sig)
+    assert "RSI" in reason
+
+
 def test_build_reason():
     sig = AssetSignal(
         name="SPY",

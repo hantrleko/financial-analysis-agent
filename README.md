@@ -27,8 +27,18 @@ An AI-powered automated financial analysis system with multi-source news aggrega
 ### 🧭 Market Sentiment Analysis
 - Multi-factor scoring model across **13 sectors, 48 assets**
 - Five factors: Daily change (30%) + 5D momentum (25%) + 20D trend (20%) + MA20 position (15%) + Volume ratio (10%)
+- **14-day RSI mean-reversion adjustment** (overbought/oversold nudge)
 - VIX fear/greed indicator with inverse scoring
 - Opportunity & risk detection
+
+### 📈 Technical Indicators (new in v2.5)
+- Pure-function indicator engine: SMA, EMA, **RSI, MACD, Bollinger Bands, ATR, Stochastic (KD)**
+- **Technical Analysis chart mode**: candlestick + Bollinger + RSI + MACD multi-panel view
+- Normalized technical score [-1, 1] with human-readable signal list
+
+### ⭐ Watchlist (new in v2.5)
+- Track custom tickers with locally-persisted JSON storage
+- Live quotes, daily change, RSI, and technical signal per symbol
 
 ### 📊 Interactive Charts
 - Asset price trends with normalized % change comparison
@@ -66,8 +76,10 @@ src/
 ├── pipeline.py     → Unified analysis pipeline
 ├── collector.py    → News collection (RSS, Google News, Gemini Search)
 ├── analyzer.py     → LLM analysis engine (Gemini + ZhiPu)
-├── sentiment.py    → Market sentiment multi-factor scoring
-├── visualizer.py   → Price chart generation (Plotly)
+├── sentiment.py    → Market sentiment multi-factor scoring (+ RSI factor)
+├── indicators.py   → Technical indicators engine (RSI/MACD/Bollinger/ATR/KD)
+├── watchlist.py    → Watchlist persistence + quote/technical fetching
+├── visualizer.py   → Price + technical chart generation (Plotly)
 ├── media_gen.py    → TTS audio + PDF export
 ├── history.py      → Run history management
 ├── newspaper.py    → Newspaper layout renderer
@@ -76,8 +88,9 @@ src/
 └── components/
     ├── newspaper_view.py       → Newspaper layout rendering
     ├── sentiment_dashboard.py  → Market sentiment dashboard
-    ├── charts_view.py          → Asset price charts (lazy-load)
-    └── history_view.py         → History with ZIP export & diff compare
+    ├── charts_view.py          → Asset price + technical analysis charts (lazy-load)
+    ├── watchlist_view.py       → Watchlist tab (quotes + technical signals)
+    └── history_view.py         → History with ZIP/CSV export & diff compare
 tests/              → Unit tests (pytest, 33 tests)
 ```
 

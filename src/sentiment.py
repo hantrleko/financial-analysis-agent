@@ -34,6 +34,7 @@ class AssetSignal:
     change_20d_pct: float = 0.0
     above_ma20: bool = False  # 价格在 20 日均线之上
     volume_ratio: float = 1.0  # 当日成交量 / 20 日均量
+    rsi: float | None = None  # 14 日 RSI（0-100），可选
     score: float = 0.0  # 综合情绪分 (-1 ~ +1)
     signal: str = "neutral"  # strong_bull / bull / neutral / bear / strong_bear
     reason: str = ""
@@ -221,6 +222,17 @@ class MarketSentimentAnalyzer:
                 ma20 = series.rolling(20).mean().iloc[-1]
                 sig.above_ma20 = sig.price > ma20
 
+            # RSI（14 日），数据足够时计算
+            if len(series) >= 15:
+                try:
+                    from src.indicators import rsi as _rsi
+
+                    rsi_series = _rsi(series).dropna()
+                    if not rsi_series.empty:
+                        sig.rsi = float(rsi_series.iloc[-1])
+                except Exception:
+                    sig.rsi = None
+
             # 成交量比率
             if volume_df is not None:
                 try:
@@ -291,6 +303,20 @@ class MarketSentimentAnalyzer:
             vol_score = -0.2  # 缩量，趋势减弱
 
         total = day_score * 0.30 + week_score * 0.25 + month_score * 0.20 + ma_score * 0.15 + vol_score * 0.10
+
+        # RSI 均值回归微调（仅在有 RSI 时生效，保持向后兼容）：
+        # 超买（>70）轻微压低，超卖（<30）轻微抬升，权重较小以免颠覆趋势判断。
+        if sig.rsi is not None:
+            if sig.rsi >= 70:
+                rsi_adj = -0.10 * min(1.0, (sig.rsi - 70) / 30.0)
+            elif sig.rsi <= 30:
+                rsi_adj = 0.10 * min(1.0, (30 - sig.rsi) / 30.0)
+            else:
+                rsi_adj = 0.0
+            if is_vix:
+                rsi_adj = -rsi_adj
+            total += rsi_adj
+
         return max(-1.0, min(1.0, total))
 
     @staticmethod
@@ -331,6 +357,13 @@ class MarketSentimentAnalyzer:
             parts.append("above MA20")
         else:
             parts.append("below MA20")
+        if sig.rsi is not None:
+            if sig.rsi >= 70:
+                parts.append(f"RSI {sig.rsi:.0f} overbought")
+            elif sig.rsi <= 30:
+                parts.append(f"RSI {sig.rsi:.0f} oversold")
+            else:
+                parts.append(f"RSI {sig.rsi:.0f}")
         if sig.volume_ratio > 1.5:
             parts.append(f"vol {sig.volume_ratio:.1f}x")
         return " | ".join(parts) if parts else "low volatility"
